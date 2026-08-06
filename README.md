@@ -1,3 +1,8 @@
+<p align="left">
+  <a href="https://buymeacoffee.com/cgarjun">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" height="50" alt="Buy Me A Coffee">
+  </a>
+</p>
 # TaskGraph
 
 TaskGraph is a small, extensible process graph editor built from scratch with

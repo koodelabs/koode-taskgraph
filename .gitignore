@@ -1,0 +1,46 @@
+# Bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Installer and tooling logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Local app/user data
+*.taskgraph
+*.taskgraph.json
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local environment files
+.env
+.env.*
+!.env.example

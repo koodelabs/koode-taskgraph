@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "koode-taskgraph"
+version = "0.1.0"
+description = "An extensible process node graph built with QtPy and PySide6"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.7",
+    "QtPy>=2.4",
+]
+
+[project.scripts]
+koode-taskgraph = "taskgraph.app:main"
+koode-taskgraph-cli = "taskgraph.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["taskgraph*"]

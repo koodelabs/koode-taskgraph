@@ -4,7 +4,7 @@
   </a>
 </p>
 
-# TaskGraph
+# Koode TaskGraph
 
 TaskGraph is a small, extensible process graph editor built from scratch with
 Python, QtPy, and PySide6.

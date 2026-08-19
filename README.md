@@ -21,6 +21,7 @@ koode-taskgraph
 ```
 
 For local development from this repository, use `python -m pip install -e .`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request guidelines.
 
 ## Headless CLI
 
@@ -72,6 +73,11 @@ class PrefixText(ProcessNode):
     def process(self, inputs):
         return {"text": f"{self.prefix}{inputs.get('value', '')}"}
 ```
+
+Property kinds map to generated controls in the Properties panel: `"text"` for
+a line edit, `"file"` for a file path field with a Browse button, `"bool"` for
+a checkbox, `"int"`/`"float"` for numeric fields, and `"choice"` for a
+dropdown using `choices`.
 
 Modules in `taskgraph/nodes/` are discovered automatically. Custom modules can
 also live anywhere on disk:

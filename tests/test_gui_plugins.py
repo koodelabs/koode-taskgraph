@@ -5,11 +5,12 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QLineEdit, QWidget
 
 from taskgraph.nodes import load_builtin_nodes
-from taskgraph.core.model import Graph
+from taskgraph.core.model import Graph, NodeProperty, ProcessNode
 from taskgraph.ui.main_window import MainWindow
+from taskgraph.ui.properties import PropertyEditor
 from taskgraph.ui.plugins import load_gui_plugin_directory
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -124,6 +125,34 @@ class GuiPluginTests(unittest.TestCase):
             {connection.kind for connection in self.window.scene.graph.connections},
             {"attribute", "dependency"},
         )
+
+
+class PropertyEditorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_file_property_uses_browse_widget_and_stores_text_path(self):
+        class FileNode(ProcessNode):
+            title = "File Node"
+            type_id = "tests.file_node"
+            properties = (
+                NodeProperty("source_file", "Source File", "file", ""),
+            )
+
+        node = FileNode()
+        editor = PropertyEditor()
+        editor.set_node(node)
+
+        file_widgets = [
+            widget for widget in editor.findChildren(QWidget)
+            if widget.findChild(QLineEdit)
+        ]
+        path_editor = file_widgets[-1].findChild(QLineEdit)
+        path_editor.setText("/tmp/example.txt")
+        path_editor.editingFinished.emit()
+
+        self.assertEqual(node.values["source_file"], "/tmp/example.txt")
 
 
 if __name__ == "__main__":

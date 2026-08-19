@@ -3,8 +3,9 @@ from __future__ import annotations
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QLabel,
-    QLineEdit, QScrollArea, QSizePolicy, QSpinBox, QTextEdit, QWidget,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
+    QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QSizePolicy,
+    QSpinBox, QTextEdit, QWidget,
 )
 
 from taskgraph.core.model import Backdrop
@@ -128,10 +129,37 @@ class PropertyEditor(QScrollArea):
             widget.currentIndexChanged.connect(
                 lambda index, s=spec: self._set(s.name, s.choices[index])
             )
+        elif spec.kind == "file":
+            widget = self._make_file_editor(spec, value)
         else:
             widget = QLineEdit("" if value is None else str(value))
             widget.editingFinished.connect(lambda w=widget, s=spec: self._set(s.name, w.text()))
         return widget
+
+    def _make_file_editor(self, spec, value) -> QWidget:
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        path = QLineEdit("" if value is None else str(value))
+        browse = QPushButton("Browse...")
+        browse.clicked.connect(
+            lambda checked=False, editor=path, s=spec: self._browse_file(editor, s)
+        )
+        path.editingFinished.connect(
+            lambda editor=path, s=spec: self._set(s.name, editor.text())
+        )
+        layout.addWidget(path, 1)
+        layout.addWidget(browse)
+        return widget
+
+    def _browse_file(self, editor: QLineEdit, spec) -> None:
+        filename, _ = QFileDialog.getOpenFileName(
+            self, f"Select {spec.label}", editor.text()
+        )
+        if filename:
+            editor.setText(filename)
+            self._set(spec.name, filename)
 
     def _set(self, name, value) -> None:
         if self._node:

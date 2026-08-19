@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "koode-taskgraph"
 version = "0.3.1"
-eadme = "README.md"
+readme = "README.md"
 description = "An extensible process node graph built with QtPy and PySide6"
 requires-python = ">=3.10"
 dependencies = [

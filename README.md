@@ -23,6 +23,80 @@ koode-taskgraph
 For local development from this repository, use `python -m pip install -e .`.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request guidelines.
 
+## Application Features
+
+- Standard commands are organized under the **File**, **Edit**, **Nodes**,
+  **Graph**, **Plugins**, and **View** menus.
+- Use the search field at the top of the **Nodes** panel to filter nodes by
+  title, type id, or category.
+- Drag a node from **Nodes** to the canvas, or double-click it.
+- Every node has fixed gold **dependency** input/output ports. These control
+  process order but do not transfer values. Gold dependency connections show
+  an arrowhead pointing from the upstream node toward the downstream node.
+- Declared node inputs and outputs are attribute ports. Attribute connections
+  transfer values, but execution order comes only from dependency connections.
+  An attribute connection therefore needs a dependency path from its source
+  node to its target node.
+- Dependency ports connect only to dependency ports; compatible attribute
+  ports connect only to attribute ports.
+- Select one or more nodes on the canvas and press **D** to toggle them
+  disabled. Disabled nodes stay in the dependency chain but their process
+  functions are skipped. The same command is available from **Edit**.
+- **Copy Nodes** and **Paste Nodes** under **Edit** use the standard platform
+  shortcuts. Properties, disabled state, relative positions, and connections
+  entirely inside the copied selection are preserved.
+- Select a node to edit generated property controls.
+- Use **Node Name** at the top of the Properties panel to give each node
+  instance a descriptive name. Custom names appear in node headers and
+  execution messages and are preserved when saving or copying nodes.
+- Select nodes or connections and press **Backspace** or **Delete** to remove
+  them. **Edit → Delete Selected** works on every platform too.
+- Middle-drag pans, the mouse wheel zooms, and **F** frames the graph.
+- **Shift+A** or **Graph → Auto Arrange Nodes** lays out dependency layers
+  from left to right and parallel nodes vertically, then frames the result.
+- **Graph → Add Backdrop** creates a movable notes region behind the graph.
+  Select it to edit its title, notes, color, width, and height in Properties.
+  Drag the grip in its bottom-right corner to resize it interactively.
+  Backdrops are stored in `.taskgraph` files.
+- **Ctrl+R** executes nodes in dependency order.
+- Independent dependency branches execute concurrently. Choose between one
+  worker or any even worker count from 2 through 32 under
+  **Graph → Worker Count**; the setting is remembered.
+- Use **Graph → Cancel Execution** or **Esc** to cancel the complete run.
+  Pending nodes are cancelled immediately. Running nodes receive a cooperative
+  cancellation signal, and built-in command nodes terminate their subprocess
+  groups promptly.
+- Clear displayed execution messages with **Graph → Clear Execution Log** or
+  from the Execution panel's right-click menu.
+- Node headers show live execution state: amber while running, green when
+  finished, red on failure, gray when a disabled node is skipped, and muted
+  red when a node is blocked by an upstream failure. Cancelled nodes use a
+  purple-gray state.
+  Execution coordination runs outside the GUI thread so the final running
+  node and parallel running nodes remain visible while work is in progress.
+- A failed node blocks only its downstream dependency branch. Independent
+  parallel branches continue running and report their own final states.
+- Closed panels can be restored from **View → Nodes/Properties/Execution**.
+  Use **View → Show All Panels** to restore everything at once.
+- Graph files use readable JSON with the `.taskgraph` extension.
+
+## Built-in Nodes
+
+- Built-in nodes are organized as **System → Run Command/Print**,
+  **Utils → Format Text**, and **Inputs → Text/Number**.
+- **Inputs → Text** outputs a user-provided text value.
+- **Inputs → Number** outputs a user-provided numeric value.
+- **System → Print** prints an incoming value and supports an optional prefix.
+- **System → Run Command** executes a command and exposes stdout, stderr, and
+  return code outputs. It supports an optional working directory, shell mode,
+  timeout, and failure on non-zero exit. Shell mode executes exactly what the
+  graph author enters, so only run trusted graphs.
+- **Utils → Format Text** accepts multiple connections into its `value` input.
+  Use positional placeholders such as `{0}`, `{1}`, and `{2}` in the template.
+  `{value}` remains available as the first input value for simple one-input
+  templates. Connections into multi-input attribute ports show index labels on
+  the wire so the template order is visible on the graph.
+
 ## Remove local user settings
 
 TaskGraph stores user preferences with Qt `QSettings` under organization
@@ -181,7 +255,7 @@ class Plugin(TaskGraphGuiPlugin):
             callback=self.build_daily_report,
         )
         self.ui.menus.add_command(
-            "Examples",
+            "Examples/Graph Builders",
             f"{self.plugin_id}.build_daily_report",
         )
 
@@ -222,87 +296,19 @@ This repository includes separate practical example plugins in
 `examples/gui_plugins`:
 
 - `ui_project_notes.py` demonstrates the UI API by opening a Project Notes dock
-  panel and writing a status message.
+  panel and writing a status message from **Examples → UI Panels**.
 - `command_validate_graph.py` demonstrates the command API by registering a
-  reusable graph validation command and exposing it in the menu.
+  reusable graph validation command and exposing it in
+  **Examples → Commands**.
 - `graph_daily_report.py` demonstrates the graph API by building a reusable
   daily-report graph with nodes, dependency links, attribute links, and a
-  backdrop.
+  backdrop from **Examples → Graph Builders**.
 
 Load that directory, then use the **Examples** menu to run each example.
 
 GUI plugins are intentionally separate from custom node locations. The
 headless CLI loads `TASKGRAPH_CUSTOM_NODES` only, so UI plugin code can safely
 import Qt widgets without breaking `koode-taskgraph-cli`.
-
-## Controls
-
-- Standard commands are organized under the **File**, **Edit**, **Nodes**,
-  **Graph**, **Plugins**, and **View** menus.
-- Use the search field at the top of the **Nodes** panel to filter nodes by
-  title, type id, or category.
-- Drag a node from **Nodes** to the canvas, or double-click it.
-- Every node has fixed gold **dependency** input/output ports. These control
-  process order but do not transfer values. Gold dependency connections show
-  an arrowhead pointing from the upstream node toward the downstream node.
-- Declared node inputs and outputs are attribute ports. Attribute connections
-  transfer values, but execution order comes only from dependency connections.
-  An attribute connection therefore needs a dependency path from its source
-  node to its target node.
-- Dependency ports connect only to dependency ports; compatible attribute
-  ports connect only to attribute ports.
-- Select one or more nodes on the canvas and press **D** to toggle them
-  disabled. Disabled nodes stay in the dependency chain but their process
-  functions are skipped. The same command is available from **Edit**.
-- **Copy Nodes** and **Paste Nodes** under **Edit** use the standard platform
-  shortcuts. Properties, disabled state, relative positions, and connections
-  entirely inside the copied selection are preserved.
-- Select a node to edit generated property controls.
-- Use **Node Name** at the top of the Properties panel to give each node
-  instance a descriptive name. Custom names appear in node headers and
-  execution messages and are preserved when saving or copying nodes.
-- Select nodes or connections and press **Backspace** or **Delete** to remove
-  them. **Edit → Delete Selected** works on every platform too.
-- Middle-drag pans, the mouse wheel zooms, and **F** frames the graph.
-- **Shift+A** or **Graph → Auto Arrange Nodes** lays out dependency layers
-  from left to right and parallel nodes vertically, then frames the result.
-- **Graph → Add Backdrop** creates a movable notes region behind the graph.
-  Select it to edit its title, notes, color, width, and height in Properties.
-  Drag the grip in its bottom-right corner to resize it interactively.
-  Backdrops are stored in `.taskgraph` files.
-- **Ctrl+R** executes nodes in dependency order.
-- Independent dependency branches execute concurrently. Choose between one
-  worker or any even worker count from 2 through 32 under
-  **Graph → Worker Count**; the setting is remembered.
-- Use **Graph → Cancel Execution** or **Esc** to cancel the complete run.
-  Pending nodes are cancelled immediately. Running nodes receive a cooperative
-  cancellation signal, and built-in command nodes terminate their subprocess
-  groups promptly.
-- Clear displayed execution messages with **Graph → Clear Execution Log** or
-  from the Execution panel's right-click menu.
-- Built-in nodes are organized as **System → Run Command/Print**,
-  **Utils → Format Text**, and **Inputs → Text/Number**.
-- The built-in **System → Run Command** node executes a command and exposes
-  stdout, stderr, and return code outputs. It supports an optional working
-  directory, shell mode, timeout, and failure on non-zero exit. Shell mode
-  executes exactly what the graph author enters, so only run trusted graphs.
-- The built-in **Utils → Format Text** node accepts multiple connections into
-  its `value` input. Use positional placeholders such as `{0}`, `{1}`, and
-  `{2}` in the template. `{value}` remains available as the first input value
-  for simple one-input templates. Connections into multi-input attribute ports
-  show index labels on the wire so the template order is visible on the graph.
-- Node headers show live execution state: amber while running, green when
-  finished, red on failure, gray when a disabled node is skipped, and muted
-  red when a node is blocked by an upstream failure. Cancelled nodes use a
-  purple-gray state.
-  Execution coordination runs outside the GUI thread so the final running
-  node and parallel running nodes remain visible while work is in progress.
-- A failed node blocks only its downstream dependency branch. Independent
-  parallel branches continue running and report their own final states.
-- Closed panels can be restored from **View → Nodes/Properties/Execution**.
-  Use **View → Show All Panels** to restore everything at once.
-
-Graph files use readable JSON with the `.taskgraph` extension.
 
 ## Architecture
 

@@ -10,7 +10,7 @@ from typing import Callable, ClassVar
 
 from qtpy.QtCore import QPointF, Qt
 from qtpy.QtGui import QAction, QKeySequence
-from qtpy.QtWidgets import QDockWidget, QWidget
+from qtpy.QtWidgets import QDockWidget, QMenu, QWidget
 
 from taskgraph.core.model import Backdrop, Connection, ProcessNode
 from taskgraph.core.registry import create_node
@@ -128,7 +128,7 @@ class TaskGraphMenuApi:
         action.triggered.connect(
             lambda checked=False: self.root._trigger_callback(callback, checked)
         )
-        qt_menu = self.root.window.menu_for_plugin(menu)
+        qt_menu = self._menu_for_path(menu)
         qt_menu.addAction(action)
         self.root.window.plugin_actions.append(action)
         return action
@@ -141,6 +141,33 @@ class TaskGraphMenuApi:
             command.callback,
             command.shortcut,
         )
+
+    def _menu_for_path(self, menu: str):
+        parts = [part.strip() for part in menu.split("/") if part.strip()]
+        if not parts:
+            raise TaskGraphPluginApiError("Plugin menu path cannot be empty")
+        current = self.root.window.menu_for_plugin(parts[0])
+        path_parts = [parts[0]]
+        for part in parts[1:]:
+            path_parts.append(part)
+            current = self._submenu(current, part, "/".join(path_parts))
+        return current
+
+    def _submenu(self, parent_menu, title: str, path: str):
+        key = self.root.window._plugin_menu_key(path)
+        if key in self.root.window.menus:
+            return self.root.window.menus[key]
+        normalized = title.replace("&", "").strip().lower()
+        for action in parent_menu.actions():
+            submenu = action.menu()
+            if submenu and submenu.title().replace("&", "").strip().lower() == normalized:
+                self.root.window.menus[key] = submenu
+                return submenu
+        submenu = QMenu(title, parent_menu)
+        parent_menu.addMenu(submenu)
+        self.root.window.menus[key] = submenu
+        self.root.window.plugin_menus.append(submenu)
+        return submenu
 
 
 class TaskGraphDockApi:

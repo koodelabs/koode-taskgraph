@@ -202,14 +202,20 @@ class GuiPluginTests(unittest.TestCase):
         ])
 
         examples_menu = self.window.menus["examples"]
-        action_labels = [action.text() for action in examples_menu.actions()]
-        self.assertEqual(action_labels, [
-            "Command API: Validate Current Graph",
-            "Graph API: Build Daily Report Graph",
-            "UI API: Open Project Notes Panel",
+        submenu_labels = [
+            action.menu().title() for action in examples_menu.actions()
+            if action.menu()
+        ]
+        self.assertEqual(submenu_labels, [
+            "Commands",
+            "Graph Builders",
+            "UI Panels",
         ])
 
-        self._trigger_example_action("Command API: Validate Current Graph")
+        self._trigger_example_action(
+            "Examples/Commands",
+            "Command API: Validate Current Graph",
+        )
         self.assertEqual(
             self.window.statusBar().currentMessage(),
             "Graph validation passed: 0 node(s), 0 connection(s).",
@@ -219,7 +225,10 @@ class GuiPluginTests(unittest.TestCase):
             self.window.console.toPlainText(),
         )
 
-        self._trigger_example_action("UI API: Open Project Notes Panel")
+        self._trigger_example_action(
+            "Examples/UI Panels",
+            "UI API: Open Project Notes Panel",
+        )
         self.assertEqual(self.window.plugin_docks[-1].windowTitle(), "Project Notes")
         self.assertEqual(
             self.window.statusBar().currentMessage(),
@@ -227,6 +236,7 @@ class GuiPluginTests(unittest.TestCase):
         )
 
         self._trigger_example_and_assert_graph(
+            menu_path="Examples/Graph Builders",
             action_text="Graph API: Build Daily Report Graph",
             node_names=[
                 "Report Title",
@@ -237,17 +247,27 @@ class GuiPluginTests(unittest.TestCase):
             text_value="Daily Production Report",
         )
 
-    def _trigger_example_action(self, action_text):
-        examples_menu = self.window.menus["examples"]
+    def _trigger_example_action(self, menu_path, action_text):
+        menu = self._menu_by_path(menu_path)
         actions = [
-            action for action in examples_menu.actions()
+            action for action in menu.actions()
             if action.text() == action_text
         ]
         self.assertEqual(len(actions), 1)
         actions[0].trigger()
 
-    def _trigger_example_and_assert_graph(self, action_text, node_names, text_value):
-        self._trigger_example_action(action_text)
+    def _menu_by_path(self, menu_path):
+        key = self.window._plugin_menu_key(menu_path)
+        return self.window.menus[key]
+
+    def _trigger_example_and_assert_graph(
+        self,
+        menu_path,
+        action_text,
+        node_names,
+        text_value,
+    ):
+        self._trigger_example_action(menu_path, action_text)
 
         nodes = list(self.window.scene.graph.nodes.values())
         self.assertEqual([node.display_name for node in nodes], node_names)

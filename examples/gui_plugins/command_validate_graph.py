@@ -13,7 +13,7 @@ class Plugin(TaskGraphGuiPlugin):
             callback=self.validate_graph,
         )
         self.ui.menus.add_command(
-            "Examples",
+            "Examples/Commands",
             f"{self.plugin_id}.validate_graph",
         )
 

@@ -13,7 +13,7 @@ class Plugin(TaskGraphGuiPlugin):
             callback=self.build_daily_report,
         )
         self.ui.menus.add_command(
-            "Examples",
+            "Examples/Graph Builders",
             f"{self.plugin_id}.build_daily_report",
         )
 

@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         self.execution_thread: QThread | None = None
         self.execution_worker: GraphExecutionWorker | None = None
         self.plugin_actions: list[QAction] = []
+        self.plugin_menus = []
         self.plugin_docks: list[QDockWidget] = []
         saved_workers = QSettings().value("execution/max_workers", 4, type=int)
         self.worker_count = min(

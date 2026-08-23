@@ -15,7 +15,7 @@ class Plugin(TaskGraphGuiPlugin):
             callback=self.open_notes_panel,
         )
         self.ui.menus.add_command(
-            "Examples",
+            "Examples/UI Panels",
             f"{self.plugin_id}.open_notes",
         )
 

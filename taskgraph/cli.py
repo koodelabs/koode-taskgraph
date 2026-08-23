@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         load_builtin_nodes()
         environment_paths = [
             path
-            for path in os.environ.get("TASKGRAPH_NODE_PATH", "").split(os.pathsep)
+            for path in os.environ.get("TASKGRAPH_CUSTOM_NODES", "").split(os.pathsep)
             if path
         ]
         for location in dict.fromkeys([*environment_paths, *args.node_path]):

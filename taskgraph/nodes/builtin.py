@@ -40,15 +40,19 @@ class FormatText(ProcessNode):
     title = "Format Text"
     category = "Utils"
     color = "#6f4a8e"
-    inputs = (PortSpec("value", "any", required=True),)
+    inputs = (PortSpec("value", "any", required=True, multiple=True),)
     outputs = (PortSpec("text", "text"),)
     properties = (
-        NodeProperty("template", "Template", "text", "Result: {value}"),
+        NodeProperty("template", "Template", "text", "Result: {0}"),
         NodeProperty("uppercase", "Uppercase", "bool", False),
     )
 
     def process(self, inputs):
-        text = self.template.format(value=inputs["value"])
+        values = inputs["value"]
+        if not isinstance(values, list):
+            values = [values]
+        first_value = values[0] if values else ""
+        text = self.template.format(*values, value=first_value, values=values)
         return {"text": text.upper() if self.uppercase else text}
 
 

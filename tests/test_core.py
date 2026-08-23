@@ -2,6 +2,7 @@ from pathlib import Path
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 import json
+import os
 import shlex
 import sys
 import tempfile
@@ -72,6 +73,22 @@ class CoreTests(unittest.TestCase):
             node = create_node("tests.external_location")
             self.assertEqual(node.process({}), {"loaded": True})
 
+    def test_custom_node_example_loads_and_processes_text(self):
+        node_directory = Path(__file__).resolve().parents[1] / "examples" / "custom_nodes"
+        loaded = load_custom_node_directory(node_directory)
+        self.assertEqual(loaded, [node_directory / "text_cleanup.py"])
+        node = create_node(
+            "examples.clean_text",
+            values={
+                "fallback_text": "  daily    production   report  ",
+                "case_mode": "Title Case",
+            },
+        )
+        self.assertEqual(
+            node.process({}),
+            {"text": "Daily Production Report"},
+        )
+
     def test_dependency_execution(self):
         graph = sample_graph()
         result = execute_graph(graph)
@@ -80,6 +97,30 @@ class CoreTests(unittest.TestCase):
         )
         self.assertEqual(result.outputs[formatter.id]["text"], "Value: 3.0")
         self.assertEqual(result.order[-1], formatter.id)
+
+    def test_format_text_accepts_multiple_input_values(self):
+        graph = Graph()
+        first = create_node("input.text", values={"text": "hello"})
+        second = create_node("input.text", values={"text": "world"})
+        formatter = create_node(
+            "text.format",
+            values={"template": "{0} {1}"},
+        )
+        graph.add_node(first)
+        graph.add_node(second)
+        graph.add_node(formatter)
+        graph.connect(Connection(
+            first.id, "dependency", formatter.id, "dependency", "dependency"
+        ))
+        graph.connect(Connection(
+            second.id, "dependency", formatter.id, "dependency", "dependency"
+        ))
+        graph.connect(Connection(first.id, "text", formatter.id, "value"))
+        graph.connect(Connection(second.id, "text", formatter.id, "value"))
+
+        result = execute_graph(graph)
+
+        self.assertEqual(result.outputs[formatter.id]["text"], "hello world")
 
     def test_round_trip(self):
         graph = sample_graph()
@@ -115,6 +156,64 @@ class CoreTests(unittest.TestCase):
         payload = json.loads(stdout.getvalue())
         self.assertEqual(payload["outputs"][formatter.id]["text"], "Value: 3.0")
         self.assertIn("Running Number", stderr.getvalue())
+
+    def test_headless_cli_loads_custom_nodes_from_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            node_directory = Path(directory) / "nodes"
+            node_directory.mkdir()
+            module = node_directory / "cli_env_nodes.py"
+            module.write_text(
+                "\n".join([
+                    "from taskgraph.core.model import ProcessNode",
+                    "from taskgraph.core.registry import register_node",
+                    "",
+                    "@register_node",
+                    "class CliEnvironmentNode(ProcessNode):",
+                    '    type_id = "tests.cli_environment_node"',
+                    '    title = "CLI Environment Node"',
+                    '    category = "Tests"',
+                    "",
+                    "    def process(self, inputs):",
+                    '        return {"text": "loaded from env"}',
+                ]),
+                encoding="utf-8",
+            )
+            graph_path = Path(directory) / "custom_env.taskgraph"
+            graph_path.write_text(
+                json.dumps({
+                    "version": 1,
+                    "nodes": [{
+                        "id": "custom-node",
+                        "type": "tests.cli_environment_node",
+                        "values": {},
+                        "disabled": False,
+                        "name": None,
+                        "position": [0, 0],
+                    }],
+                    "connections": [],
+                    "backdrops": [],
+                }),
+                encoding="utf-8",
+            )
+            previous = os.environ.get("TASKGRAPH_CUSTOM_NODES")
+            os.environ["TASKGRAPH_CUSTOM_NODES"] = str(node_directory)
+            stdout = StringIO()
+            stderr = StringIO()
+            try:
+                with redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = cli_main(["--file", str(graph_path), "--json"])
+            finally:
+                if previous is None:
+                    os.environ.pop("TASKGRAPH_CUSTOM_NODES", None)
+                else:
+                    os.environ["TASKGRAPH_CUSTOM_NODES"] = previous
+
+        self.assertEqual(exit_code, 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(
+            payload["outputs"]["custom-node"],
+            {"text": "loaded from env"},
+        )
 
     def test_headless_cli_reports_missing_graph(self):
         with tempfile.TemporaryDirectory() as directory:

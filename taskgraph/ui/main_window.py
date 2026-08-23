@@ -9,7 +9,8 @@ from qtpy.QtCore import (
 from qtpy.QtGui import QAction, QActionGroup, QDrag, QKeySequence, QShortcut
 from qtpy.QtWidgets import (
     QAbstractItemView, QDockWidget, QFileDialog, QMainWindow, QMessageBox,
-    QPlainTextEdit, QTreeWidget, QTreeWidgetItem,
+    QLineEdit, QPlainTextEdit, QTreeWidget, QTreeWidgetItem, QVBoxLayout,
+    QWidget,
 )
 
 from taskgraph.core.executor import (
@@ -67,26 +68,12 @@ class GraphExecutionWorker(QObject):
             self.completed.emit(result)
 
 
-class NodePalette(QTreeWidget):
+class NodePaletteTree(QTreeWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragOnly)
-        self.reload()
-
-    def reload(self) -> None:
-        self.clear()
-        for category, classes in nodes_by_category().items():
-            parent = QTreeWidgetItem([category])
-            parent.setFlags(parent.flags() & ~Qt.ItemIsDragEnabled)
-            self.addTopLevelItem(parent)
-            for cls in classes:
-                child = QTreeWidgetItem([cls.title])
-                child.setData(0, Qt.UserRole, cls.type_id)
-                child.setToolTip(0, cls.type_id)
-                parent.addChild(child)
-            parent.setExpanded(True)
 
     def startDrag(self, supported_actions) -> None:
         item = self.currentItem()
@@ -98,6 +85,50 @@ class NodePalette(QTreeWidget):
         drag = QDrag(self)
         drag.setMimeData(mime)
         drag.exec(Qt.CopyAction)
+
+
+class NodePalette(QWidget):
+    itemDoubleClicked = Signal(object, int)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.search = QLineEdit()
+        self.search.setPlaceholderText("Search nodes...")
+        self.tree = NodePaletteTree()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+        layout.addWidget(self.search)
+        layout.addWidget(self.tree, 1)
+        self.search.textChanged.connect(self.reload)
+        self.tree.itemDoubleClicked.connect(self.itemDoubleClicked.emit)
+        self.reload()
+
+    def reload(self) -> None:
+        query = self.search.text().strip().lower()
+        self.tree.clear()
+        for category, classes in nodes_by_category().items():
+            matches_category = query and query in category.lower()
+            children = [
+                cls for cls in classes
+                if (
+                    not query
+                    or matches_category
+                    or query in cls.title.lower()
+                    or query in cls.type_id.lower()
+                )
+            ]
+            if not children:
+                continue
+            parent = QTreeWidgetItem([category])
+            parent.setFlags(parent.flags() & ~Qt.ItemIsDragEnabled)
+            self.tree.addTopLevelItem(parent)
+            for cls in children:
+                child = QTreeWidgetItem([cls.title])
+                child.setData(0, Qt.UserRole, cls.type_id)
+                child.setToolTip(0, cls.type_id)
+                parent.addChild(child)
+            parent.setExpanded(True)
 
 
 class MainWindow(QMainWindow):
@@ -372,16 +403,12 @@ class MainWindow(QMainWindow):
                 self, "GUI plugin loading failed", f"{directory}\n\n{exc}"
             )
             return
-        settings = QSettings()
-        locations = settings.value("plugins/custom_locations", [])
-        if isinstance(locations, str):
-            locations = [locations]
-        if directory not in locations:
-            locations.append(directory)
-            settings.setValue("plugins/custom_locations", locations)
         self.palette.reload()
         self.statusBar().showMessage(
-            f"Loaded {len(loaded)} GUI plugin module(s) from {directory}",
+            (
+                f"Loaded {len(loaded)} GUI plugin module(s) from {directory} "
+                "for this session"
+            ),
             6000,
         )
 

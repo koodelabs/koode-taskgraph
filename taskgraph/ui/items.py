@@ -336,7 +336,7 @@ class ConnectionItem(QGraphicsItem):
         self.refresh()
 
     def boundingRect(self) -> QRectF:
-        return self.path.boundingRect().adjusted(-8, -8, 8, 8)
+        return self.path.boundingRect().adjusted(-18, -18, 18, 18)
 
     def shape(self) -> QPainterPath:
         from qtpy.QtGui import QPainterPathStroker
@@ -382,22 +382,68 @@ class ConnectionItem(QGraphicsItem):
             color = QColor("#f2b04f" if self.isSelected() else "#4db8c6")
         painter.setPen(QPen(color, 3 if self.isSelected() else 2, Qt.SolidLine, Qt.RoundCap))
         painter.drawPath(self.path)
-        if self.connection and self.connection.kind == "dependency":
-            # Place the arrow inside the curve rather than at the port, where
-            # it remains readable even when several connections share a node.
-            before = self.path.pointAtPercent(0.54)
-            tip = self.path.pointAtPercent(0.58)
-            angle = math.atan2(tip.y() - before.y(), tip.x() - before.x())
-            direction = QPointF(math.cos(angle), math.sin(angle))
-            normal = QPointF(-direction.y(), direction.x())
-            arrow_length = 11.0
-            arrow_width = 6.0
-            base = tip - direction * arrow_length
-            arrow = QPolygonF([
-                tip,
-                base + normal * arrow_width,
-                base - normal * arrow_width,
-            ])
-            painter.setPen(Qt.NoPen)
-            painter.setBrush(color)
-            painter.drawPolygon(arrow)
+        self._draw_arrow(painter, color)
+        self._draw_multi_input_index(painter, color)
+
+    def _draw_arrow(self, painter: QPainter, color: QColor) -> None:
+        # Place the arrow inside the curve rather than at the port, where it
+        # remains readable even when several connections share a node.
+        before = self.path.pointAtPercent(0.54)
+        tip = self.path.pointAtPercent(0.58)
+        angle = math.atan2(tip.y() - before.y(), tip.x() - before.x())
+        direction = QPointF(math.cos(angle), math.sin(angle))
+        normal = QPointF(-direction.y(), direction.x())
+        arrow_length = 11.0
+        arrow_width = 6.0
+        base = tip - direction * arrow_length
+        arrow = QPolygonF([
+            tip,
+            base + normal * arrow_width,
+            base - normal * arrow_width,
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(color)
+        painter.drawPolygon(arrow)
+
+    def _draw_multi_input_index(self, painter: QPainter, color: QColor) -> None:
+        index = self.multi_input_index()
+        if index is None:
+            return
+        center = self.path.pointAtPercent(0.82)
+        rect = QRectF(center.x() - 9, center.y() - 9, 18, 18)
+        fill = QColor("#101820")
+        fill.setAlpha(230)
+        painter.setPen(QPen(color.lighter(125), 1.2))
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, 5, 5)
+        font = QFont(painter.font())
+        font.setBold(True)
+        font.setPointSize(max(7, font.pointSize() - 1))
+        painter.setFont(font)
+        painter.setPen(QColor("#f2f5f7"))
+        painter.drawText(rect, Qt.AlignCenter, str(index))
+
+    def multi_input_index(self) -> int | None:
+        if not self.connection or self.connection.kind != "attribute":
+            return None
+        target = self.graph_scene.graph.nodes.get(self.connection.target_node)
+        if not target:
+            return None
+        target_port = next(
+            (
+                port for port in target.inputs
+                if port.name == self.connection.target_port
+            ),
+            None,
+        )
+        if not target_port or not target_port.multiple:
+            return None
+        incoming = [
+            edge for edge in self.graph_scene.graph.connections
+            if (
+                edge.kind == "attribute"
+                and edge.target_node == self.connection.target_node
+                and edge.target_port == self.connection.target_port
+            )
+        ]
+        return incoming.index(self.connection)

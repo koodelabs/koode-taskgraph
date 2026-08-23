@@ -23,6 +23,48 @@ koode-taskgraph
 For local development from this repository, use `python -m pip install -e .`.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request guidelines.
 
+## Remove local user settings
+
+TaskGraph stores user preferences with Qt `QSettings` under organization
+`TaskGraph` and application `TaskGraph`. Settings include saved custom node
+locations and the execution worker count. GUI plugin locations are session-only
+and are not saved, but older versions may have saved GUI plugin locations.
+
+Default locations:
+
+- **macOS:** `~/Library/Preferences/com.taskgraph.TaskGraph.plist`
+- **Linux:** `~/.config/TaskGraph/TaskGraph.conf`
+  - If `XDG_CONFIG_HOME` is set:
+    `$XDG_CONFIG_HOME/TaskGraph/TaskGraph.conf`
+- **Windows:** Registry key
+  `HKEY_CURRENT_USER\Software\TaskGraph\TaskGraph`
+
+Quit TaskGraph before removing settings.
+
+macOS:
+
+```bash
+defaults delete com.taskgraph.TaskGraph
+```
+
+Linux:
+
+```bash
+rm ~/.config/TaskGraph/TaskGraph.conf
+```
+
+Windows Command Prompt:
+
+```bat
+reg delete HKCU\Software\TaskGraph\TaskGraph /f
+```
+
+Windows PowerShell:
+
+```powershell
+Remove-Item -Path "HKCU:\Software\TaskGraph\TaskGraph" -Recurse -Force
+```
+
 ## Headless CLI
 
 Execute a saved graph without starting Qt or opening a window:
@@ -40,7 +82,7 @@ koode-taskgraph-cli \
   --node-path /path/to/custom_nodes
 ```
 
-`--node-path` may be repeated. `TASKGRAPH_NODE_PATH` is also supported with
+`--node-path` may be repeated. `TASKGRAPH_CUSTOM_NODES` is also supported with
 the normal platform path separator. Use `--json` for structured results,
 `--quiet` to hide progress messages, and `Ctrl+C` to cancel execution.
 
@@ -86,75 +128,119 @@ also live anywhere on disk:
 2. Select **Nodes → Add Custom Node Location…** and choose that directory.
 3. Restarting TaskGraph reloads the saved location automatically.
 
-Alternatively, set `TASKGRAPH_NODE_PATH` before launching. Separate multiple
+Alternatively, set `TASKGRAPH_CUSTOM_NODES` before launching. Separate multiple
 directories with the platform path separator (`:` on macOS/Linux and `;` on
 Windows):
 
 ```bash
-TASKGRAPH_NODE_PATH="/path/to/company_nodes:/path/to/my_nodes" koode-taskgraph
+TASKGRAPH_CUSTOM_NODES="/path/to/company_nodes:/path/to/my_nodes" koode-taskgraph
 ```
 
 Files beginning with `_` are ignored. Importing a custom node module executes
 its Python code, so only add trusted directories. The editor, property panel,
 serialization, and executor require no other changes.
 
-## Add a GUI plugin
+This repository includes a practical custom node example in
+`examples/custom_nodes/text_cleanup.py`. Load `examples/custom_nodes` from
+**Nodes → Add Custom Node Location…** or with:
 
-GUI plugins can add menus, actions, docks, and graph-building commands without
-editing TaskGraph source. Put one or more `.py` files in a plugin directory and
-define `register_taskgraph_plugin(api)`:
-
-```python
-def register_taskgraph_plugin(api):
-    def build_template_graph():
-        text = api.create_node(
-            "input.text",
-            name="Message",
-            values={"text": "hello world"},
-            position=(0, 0),
-        )
-        formatter = api.create_node(
-            "text.format",
-            name="Format Message",
-            values={"template": "Output: {value}"},
-            position=(280, 0),
-        )
-        printer = api.create_node(
-            "output.print",
-            name="Print Result",
-            position=(560, 0),
-        )
-        api.connect_dependency(text, formatter)
-        api.connect_attribute(text, "text", formatter, "value")
-        api.connect_dependency(formatter, printer)
-        api.connect_attribute(formatter, "text", printer, "value")
-        api.add_backdrop(
-            title="Template Notes",
-            note="This graph was created by a GUI plugin.",
-            position=(-40, -140),
-            size=(720, 180),
-        )
-
-    api.add_menu_action("Tools", "Build Template Graph", build_template_graph)
+```bash
+TASKGRAPH_CUSTOM_NODES="/path/to/taskgraph/examples/custom_nodes" koode-taskgraph
 ```
 
-Load GUI plugins from **Plugins → Add GUI Plugin Location…**. Restarting
-TaskGraph reloads saved plugin locations automatically. Alternatively, set
-`TASKGRAPH_PLUGIN_PATH` before launching, using the same platform path
-separator rules as `TASKGRAPH_NODE_PATH`.
+The example adds **Examples → Clean Text**, which trims text, optionally
+collapses whitespace, and applies a selectable case conversion.
 
-This repository includes minimal example plugins in `examples/gui_plugins`.
-Load that directory, then run **Examples → Create Hello World Print Graph** or
-**Examples → Create Bingooo Print Graph**.
+## Add a GUI plugin
+
+GUI plugins can add menus, commands, docks, and graph-building tools without
+editing TaskGraph source. Put one or more `.py` files in a plugin directory and
+define `class Plugin(TaskGraphGuiPlugin)`.
+
+The plugin API is split into namespaces. Inside `TaskGraphGuiPlugin` subclasses
+these are available as:
+
+- `self.commands` registers reusable commands.
+- `self.ui` exposes GUI features such as menus, docks, and status messages.
+- `self.graph` creates nodes, connects ports, reads the graph model, and adds
+  backdrops.
+
+```python
+from taskgraph.ui.plugins import TaskGraphGuiPlugin
+
+
+class Plugin(TaskGraphGuiPlugin):
+    plugin_id = "example.graph_daily_report"
+    name = "Daily Report Graph Builder"
+    version = "1.0.0"
+
+    def setup(self):
+        self.commands.register(
+            f"{self.plugin_id}.build_daily_report",
+            label="Graph API: Build Daily Report Graph",
+            callback=self.build_daily_report,
+        )
+        self.ui.menus.add_command(
+            "Examples",
+            f"{self.plugin_id}.build_daily_report",
+        )
+
+    def build_daily_report(self):
+        text = self.graph.create_node(
+            "input.text",
+            name="Report Title",
+            values={"text": "Daily Production Report"},
+            position=(0, 0),
+        )
+        printer = self.graph.create_node(
+            "output.print",
+            name="Print Report",
+            position=(320, 0),
+        )
+        self.graph.connect_dependency(text, printer)
+        self.graph.connect_attribute(text, "text", printer, "value")
+        self.graph.add_backdrop(
+            title="Daily Report Template",
+            note="This graph was created by a GUI plugin.",
+            position=(-40, -140),
+            size=(650, 170),
+        )
+```
+
+Older flat helpers such as `api.create_node(...)` and
+`api.add_menu_action(...)`, plus the old `register_taskgraph_plugin(api)`
+function entrypoint, are still supported for compatibility. New plugins should
+use the OOP `Plugin` class and namespaced API.
+
+Load GUI plugins from **Plugins → Add GUI Plugin Location…** for the current
+session. GUI plugin locations are not saved or automatically reloaded on the
+next launch. To load GUI plugins at startup, set `TASKGRAPH_GUI_PLUGINS` before
+launching, using the same platform path separator rules as
+`TASKGRAPH_CUSTOM_NODES`.
+
+This repository includes separate practical example plugins in
+`examples/gui_plugins`:
+
+- `ui_project_notes.py` demonstrates the UI API by opening a Project Notes dock
+  panel and writing a status message.
+- `command_validate_graph.py` demonstrates the command API by registering a
+  reusable graph validation command and exposing it in the menu.
+- `graph_daily_report.py` demonstrates the graph API by building a reusable
+  daily-report graph with nodes, dependency links, attribute links, and a
+  backdrop.
+
+Load that directory, then use the **Examples** menu to run each example.
 
 GUI plugins are intentionally separate from custom node locations. The
-headless CLI loads `TASKGRAPH_NODE_PATH` only, so UI plugin code can safely
+headless CLI loads `TASKGRAPH_CUSTOM_NODES` only, so UI plugin code can safely
 import Qt widgets without breaking `koode-taskgraph-cli`.
 
 ## Controls
 
 - Standard commands are organized under the **File**, **Edit**, **Nodes**,
   **Graph**, **Plugins**, and **View** menus.
+- Use the search field at the top of the **Nodes** panel to filter nodes by
+  title, type id, or category.
 - Drag a node from **Nodes** to the canvas, or double-click it.
 - Every node has fixed gold **dependency** input/output ports. These control
   process order but do not transfer values. Gold dependency connections show
@@ -200,6 +286,11 @@ import Qt widgets without breaking `koode-taskgraph-cli`.
   stdout, stderr, and return code outputs. It supports an optional working
   directory, shell mode, timeout, and failure on non-zero exit. Shell mode
   executes exactly what the graph author enters, so only run trusted graphs.
+- The built-in **Utils → Format Text** node accepts multiple connections into
+  its `value` input. Use positional placeholders such as `{0}`, `{1}`, and
+  `{2}` in the template. `{value}` remains available as the first input value
+  for simple one-input templates. Connections into multi-input attribute ports
+  show index labels on the wire so the template order is visible on the graph.
 - Node headers show live execution state: amber while running, green when
   finished, red on failure, gray when a disabled node is skipped, and muted
   red when a node is blocked by an upstream failure. Cancelled nodes use a

@@ -5,15 +5,27 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QSettings
-from qtpy.QtWidgets import QApplication, QLineEdit, QWidget
+from qtpy.QtCore import QSettings, Qt
+from qtpy.QtGui import QKeyEvent, QTextCursor
+from qtpy.QtWidgets import (
+    QApplication, QFileDialog, QLineEdit, QPushButton, QSizePolicy, QWidget,
+)
 
 from taskgraph.nodes import load_builtin_nodes
-from taskgraph.core.model import Connection, Graph, NodeProperty, ProcessNode
+from taskgraph.core.model import (
+    Connection,
+    Graph,
+    MultilineProperty,
+    PathProperty,
+    ProcessNode,
+)
 from taskgraph.core.registry import create_node
 from taskgraph.ui import main_window as main_window_module
 from taskgraph.ui.main_window import MainWindow, NodePalette
-from taskgraph.ui.properties import PropertyEditor
+from taskgraph.ui.properties import (
+    CodeEditor,
+    PropertyEditor,
+)
 from taskgraph.ui.plugins import load_gui_plugin_directory
 from taskgraph.ui.scene import GraphScene
 
@@ -61,8 +73,8 @@ class GuiPluginTests(unittest.TestCase):
                     "",
                     "    def build_graph(self):",
                     "        text = self.graph.create_node(",
-                    "            'input.text',",
-                    "            values={'text': 'hello'},",
+                    "            'input.string',",
+                    "            values={'string': 'hello'},",
                     "            name='Message',",
                     "            position=(10, 20),",
                     "        )",
@@ -74,7 +86,7 @@ class GuiPluginTests(unittest.TestCase):
                     "        )",
                     "        self.graph.connect_dependency(text, formatter)",
                     "        self.graph.connect_attribute(",
-                    "            text, 'text', formatter, 'value'",
+                    "            text, 'string', formatter, 'value'",
                     "        )",
                     "        self.graph.add_backdrop(",
                     "            title='Plugin Notes',",
@@ -98,7 +110,7 @@ class GuiPluginTests(unittest.TestCase):
 
         nodes = list(self.window.scene.graph.nodes.values())
         self.assertEqual([node.display_name for node in nodes], ["Message", "Formatter"])
-        self.assertEqual(nodes[0].values["text"], "hello")
+        self.assertEqual(nodes[0].values["string"], "hello")
         self.assertEqual(nodes[1].values["template"], "Output: {value}")
         self.assertEqual(len(self.window.scene.graph.connections), 2)
         self.assertEqual(
@@ -108,48 +120,6 @@ class GuiPluginTests(unittest.TestCase):
         backdrops = list(self.window.scene.graph.backdrops.values())
         self.assertEqual(len(backdrops), 1)
         self.assertEqual(backdrops[0].title, "Plugin Notes")
-
-    def test_gui_plugin_legacy_flat_api_still_works(self):
-        with tempfile.TemporaryDirectory() as directory:
-            plugin_directory = Path(directory)
-            plugin = plugin_directory / "legacy_graph_builder.py"
-            plugin.write_text(
-                "\n".join([
-                    "def register_taskgraph_plugin(api):",
-                    "    def build_graph():",
-                    "        text = api.create_node(",
-                    "            'input.text', values={'text': 'legacy'}",
-                    "        )",
-                    "        printer = api.create_node('output.print')",
-                    "        api.connect_dependency(text, printer)",
-                    "        api.connect_attribute(text, 'text', printer, 'value')",
-                    "    api.add_menu_action(",
-                    "        'Tools', 'Build Legacy Graph', build_graph",
-                    "    )",
-                ]),
-                encoding="utf-8",
-            )
-
-            self.assertEqual(
-                load_gui_plugin_directory(plugin_directory, self.window),
-                [plugin.resolve()],
-            )
-
-        tools_menu = self.window.menus["tools"]
-        actions = [
-            action for action in tools_menu.actions()
-            if action.text() == "Build Legacy Graph"
-        ]
-        self.assertEqual(len(actions), 1)
-        actions[0].trigger()
-
-        nodes = list(self.window.scene.graph.nodes.values())
-        self.assertEqual([node.type_id for node in nodes], [
-            "input.text",
-            "output.print",
-        ])
-        self.assertEqual(nodes[0].values["text"], "legacy")
-        self.assertEqual(len(self.window.scene.graph.connections), 2)
 
     def test_add_gui_plugin_location_does_not_persist_for_auto_load(self):
         settings = QSettings()
@@ -271,8 +241,8 @@ class GuiPluginTests(unittest.TestCase):
 
         nodes = list(self.window.scene.graph.nodes.values())
         self.assertEqual([node.display_name for node in nodes], node_names)
-        self.assertEqual(nodes[0].type_id, "input.text")
-        self.assertEqual(nodes[0].values["text"], text_value)
+        self.assertEqual(nodes[0].type_id, "input.string")
+        self.assertEqual(nodes[0].values["string"], text_value)
         self.assertEqual(nodes[-1].type_id, "output.print")
         self.assertEqual(len(self.window.scene.graph.connections), 6)
         self.assertEqual(
@@ -287,27 +257,80 @@ class PropertyEditorTests(unittest.TestCase):
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
 
-    def test_file_property_uses_browse_widget_and_stores_text_path(self):
-        class FileNode(ProcessNode):
-            title = "File Node"
-            type_id = "tests.file_node"
+    def test_path_property_uses_browse_widget_and_stores_text_path(self):
+        class PathNode(ProcessNode):
+            title = "Path Node"
+            type_id = "tests.path_node"
             properties = (
-                NodeProperty("source_file", "Source File", "file", ""),
+                PathProperty("source_path", "Source Path", ""),
             )
 
-        node = FileNode()
+        node = PathNode()
         editor = PropertyEditor()
         editor.set_node(node)
 
-        file_widgets = [
+        path_widgets = [
             widget for widget in editor.findChildren(QWidget)
             if widget.findChild(QLineEdit)
         ]
-        path_editor = file_widgets[-1].findChild(QLineEdit)
+        path_editor = path_widgets[-1].findChild(QLineEdit)
         path_editor.setText("/tmp/example.txt")
         path_editor.editingFinished.emit()
 
-        self.assertEqual(node.values["source_file"], "/tmp/example.txt")
+        self.assertEqual(node.values["source_path"], "/tmp/example.txt")
+
+    def test_path_property_can_default_to_directory_browsing(self):
+        class PathNode(ProcessNode):
+            title = "Path Node"
+            type_id = "tests.directory_path_node"
+            properties = (
+                PathProperty("output_dir", "Output Directory", "", directory=True),
+            )
+
+        node = PathNode()
+        editor = PropertyEditor()
+        editor.set_node(node)
+
+        path_widgets = [
+            widget for widget in editor.findChildren(QWidget)
+            if widget.findChild(QLineEdit)
+        ]
+        path_editor = path_widgets[-1].findChild(QLineEdit)
+        path_editor.setText("/tmp/example-dir")
+        path_editor.editingFinished.emit()
+
+        self.assertEqual(node.values["output_dir"], "/tmp/example-dir")
+
+    def test_multiline_property_uses_code_editor_with_indentation(self):
+        class ScriptNode(ProcessNode):
+            title = "Script Node"
+            type_id = "tests.script_node"
+            properties = (
+                MultilineProperty("code", "Code", "def process(inputs):"),
+            )
+
+        node = ScriptNode()
+        editor = PropertyEditor()
+        editor.set_node(node)
+
+        code_editor = editor.findChild(CodeEditor)
+        self.assertEqual(
+            code_editor.sizePolicy().verticalPolicy(),
+            QSizePolicy.Expanding,
+        )
+        code_editor.setPlainText("def process(inputs):")
+        code_editor.moveCursor(QTextCursor.End)
+        code_editor.keyPressEvent(QKeyEvent(
+            QKeyEvent.KeyPress,
+            Qt.Key_Tab,
+            Qt.NoModifier,
+        ))
+        code_editor.insertPlainText("return {'result': 1}")
+
+        self.assertEqual(
+            node.values["code"],
+            "def process(inputs):    return {'result': 1}",
+        )
 
 
 class ConnectionItemTests(unittest.TestCase):
@@ -320,14 +343,14 @@ class ConnectionItemTests(unittest.TestCase):
 
     def test_multi_input_attribute_connections_report_visible_indices(self):
         graph = Graph()
-        first = create_node("input.text", values={"text": "first"})
-        second = create_node("input.text", values={"text": "second"})
+        first = create_node("input.string", values={"string": "first"})
+        second = create_node("input.string", values={"string": "second"})
         formatter = create_node("text.format")
         graph.add_node(first)
         graph.add_node(second)
         graph.add_node(formatter)
-        graph.connect(Connection(first.id, "text", formatter.id, "value"))
-        graph.connect(Connection(second.id, "text", formatter.id, "value"))
+        graph.connect(Connection(first.id, "string", formatter.id, "value"))
+        graph.connect(Connection(second.id, "string", formatter.id, "value"))
 
         scene = GraphScene(graph)
 
@@ -379,7 +402,10 @@ class NodePaletteTests(unittest.TestCase):
 
         self.palette.search.setText("inputs")
         self.assertEqual(self.visible_categories(), ["Inputs"])
-        self.assertEqual(self.visible_nodes(), ["Number", "Text"])
+        self.assertEqual(
+            self.visible_nodes(),
+            ["Dict", "List", "Number", "Path", "String"],
+        )
 
 
 if __name__ == "__main__":

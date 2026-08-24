@@ -100,8 +100,8 @@ class CoreTests(unittest.TestCase):
 
     def test_format_text_accepts_multiple_input_values(self):
         graph = Graph()
-        first = create_node("input.text", values={"text": "hello"})
-        second = create_node("input.text", values={"text": "world"})
+        first = create_node("input.string", values={"string": "hello"})
+        second = create_node("input.string", values={"string": "world"})
         formatter = create_node(
             "text.format",
             values={"template": "{0} {1}"},
@@ -115,12 +115,81 @@ class CoreTests(unittest.TestCase):
         graph.connect(Connection(
             second.id, "dependency", formatter.id, "dependency", "dependency"
         ))
-        graph.connect(Connection(first.id, "text", formatter.id, "value"))
-        graph.connect(Connection(second.id, "text", formatter.id, "value"))
+        graph.connect(Connection(first.id, "string", formatter.id, "value"))
+        graph.connect(Connection(second.id, "string", formatter.id, "value"))
 
         result = execute_graph(graph)
 
         self.assertEqual(result.outputs[formatter.id]["text"], "hello world")
+
+    def test_list_and_dict_nodes_output_native_python_values(self):
+        list_node = create_node(
+            "input.list",
+            values={"items": '["one", 2, true]'},
+        )
+        dict_node = create_node(
+            "input.dict",
+            values={"items": '{"name": "task", "enabled": true}'},
+        )
+
+        self.assertEqual(list_node.process({})["list"], ["one", 2, True])
+        self.assertEqual(
+            dict_node.process({})["dict"],
+            {"name": "task", "enabled": True},
+        )
+
+    def test_path_node_outputs_selected_file_or_directory_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input.txt"
+            source.write_text("file contents", encoding="utf-8")
+            file_node = create_node(
+                "input.path",
+                values={
+                    "path": str(source),
+                },
+            )
+            directory_node = create_node(
+                "input.path",
+                values={
+                    "path": directory,
+                },
+            )
+
+        self.assertEqual(file_node.process({}), {"path": str(source)})
+        self.assertEqual(directory_node.process({}), {"path": directory})
+
+    def test_python_script_node_processes_multiple_inputs_and_stdout(self):
+        node = create_node(
+            "system.python_script",
+            values={
+                "code": "\n".join([
+                    "print('setup message')",
+                    "def process(inputs):",
+                    "    print('summing values')",
+                    "    return {'result': sum(inputs['values'])}",
+                ]),
+            },
+        )
+
+        result = node.process({"value": [2, 3, 5]})
+
+        self.assertEqual(result["result"], 10)
+        self.assertEqual(result["stdout"], "setup message\nsumming values\n")
+        self.assertEqual(result["stderr"], "")
+
+    def test_python_script_node_reports_script_errors(self):
+        node = create_node(
+            "system.python_script",
+            values={
+                "code": "\n".join([
+                    "def process(inputs):",
+                    "    raise ValueError('bad script')",
+                ]),
+            },
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "bad script"):
+            node.process({"value": []})
 
     def test_round_trip(self):
         graph = sample_graph()

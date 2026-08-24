@@ -8,6 +8,10 @@ QToolButton, QPushButton {
 }
 QToolButton:hover, QPushButton:hover { background: #31404d; }
 QToolButton:pressed, QPushButton:pressed { background: #177f8e; }
+QCheckBox { spacing: 8px; }
+QCheckBox::indicator {
+    width: 16px; height: 16px;
+}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {
     background: #10151a; border: 1px solid #36434e; border-radius: 3px;
     padding: 5px; selection-background-color: #168c9c;

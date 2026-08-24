@@ -40,7 +40,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--file", "-f", required=True, type=Path,
-        help="path to a .taskgraph or compatible JSON graph file",
+        help="path to a .taskgraph file",
     )
     parser.add_argument(
         "--workers", "-w", type=worker_count, default=4,

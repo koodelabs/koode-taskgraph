@@ -15,8 +15,9 @@ if TYPE_CHECKING:
 
 
 TYPE_COLORS = {
-    "any": "#56c7d9", "text": "#61b7ff", "number": "#f0b35b",
-    "bool": "#db78e8", "list": "#75d98b", "dependency": "#f2b04f",
+    "any": "#56c7d9", "text": "#61b7ff", "string": "#61b7ff",
+    "number": "#f0b35b", "bool": "#db78e8", "list": "#75d98b",
+    "dict": "#b98cff", "dependency": "#f2b04f",
 }
 
 

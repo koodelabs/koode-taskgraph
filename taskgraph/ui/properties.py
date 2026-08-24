@@ -3,12 +3,12 @@ from __future__ import annotations
 from qtpy.QtCore import Signal
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
-    QHBoxLayout, QLabel, QLineEdit, QPushButton, QScrollArea, QSizePolicy,
-    QSpinBox, QTextEdit, QWidget,
+    QFormLayout, QLabel, QLineEdit, QScrollArea, QSizePolicy, QSpinBox,
+    QTextEdit, QWidget,
 )
 
 from taskgraph.core.model import Backdrop
+from taskgraph.ui.code_editor import CodeEditor
 
 
 class PropertyEditor(QScrollArea):
@@ -22,6 +22,7 @@ class PropertyEditor(QScrollArea):
         self._body = QWidget()
         self._layout = QFormLayout(self._body)
         self._layout.setContentsMargins(12, 12, 12, 12)
+        self._layout.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
         self.setWidget(self._body)
         self.set_node(None)
 
@@ -51,8 +52,17 @@ class PropertyEditor(QScrollArea):
         )
         self._layout.addRow("Node Name", name_editor)
         for spec in node.properties:
-            widget = self._make_editor(spec, node.values.get(spec.name))
-            self._layout.addRow(spec.label, widget)
+            widget = spec.create_editor(
+                node,
+                node.values.get(spec.name),
+                self._set,
+                self._body,
+            )
+            if isinstance(widget, CodeEditor):
+                self._layout.addRow(QLabel(spec.label))
+                self._layout.addRow(widget)
+            else:
+                self._layout.addRow(spec.label, widget)
 
     def _set_backdrop(self, backdrop: Backdrop) -> None:
         self._layout.addRow(QLabel("<b>Backdrop</b><br><small>Graph notes</small>"))
@@ -102,64 +112,6 @@ class PropertyEditor(QScrollArea):
             lambda value: self._set_backdrop_size(height=value)
         )
         self._layout.addRow("Height", height)
-
-    def _make_editor(self, spec, value):
-        if spec.kind == "bool":
-            widget = QCheckBox()
-            widget.setChecked(bool(value))
-            widget.toggled.connect(lambda checked, s=spec: self._set(s.name, checked))
-        elif spec.kind == "int":
-            widget = QSpinBox()
-            widget.setRange(int(spec.minimum if spec.minimum is not None else -1_000_000),
-                            int(spec.maximum if spec.maximum is not None else 1_000_000))
-            widget.setValue(int(value or 0))
-            widget.valueChanged.connect(lambda number, s=spec: self._set(s.name, number))
-        elif spec.kind == "float":
-            widget = QDoubleSpinBox()
-            widget.setDecimals(4)
-            widget.setRange(spec.minimum if spec.minimum is not None else -1e12,
-                            spec.maximum if spec.maximum is not None else 1e12)
-            widget.setValue(float(value or 0))
-            widget.valueChanged.connect(lambda number, s=spec: self._set(s.name, number))
-        elif spec.kind == "choice":
-            widget = QComboBox()
-            widget.addItems([str(choice) for choice in spec.choices])
-            if value in spec.choices:
-                widget.setCurrentIndex(spec.choices.index(value))
-            widget.currentIndexChanged.connect(
-                lambda index, s=spec: self._set(s.name, s.choices[index])
-            )
-        elif spec.kind == "file":
-            widget = self._make_file_editor(spec, value)
-        else:
-            widget = QLineEdit("" if value is None else str(value))
-            widget.editingFinished.connect(lambda w=widget, s=spec: self._set(s.name, w.text()))
-        return widget
-
-    def _make_file_editor(self, spec, value) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-        path = QLineEdit("" if value is None else str(value))
-        browse = QPushButton("Browse...")
-        browse.clicked.connect(
-            lambda checked=False, editor=path, s=spec: self._browse_file(editor, s)
-        )
-        path.editingFinished.connect(
-            lambda editor=path, s=spec: self._set(s.name, editor.text())
-        )
-        layout.addWidget(path, 1)
-        layout.addWidget(browse)
-        return widget
-
-    def _browse_file(self, editor: QLineEdit, spec) -> None:
-        filename, _ = QFileDialog.getOpenFileName(
-            self, f"Select {spec.label}", editor.text()
-        )
-        if filename:
-            editor.setText(filename)
-            self._set(spec.name, filename)
 
     def _set(self, name, value) -> None:
         if self._node:

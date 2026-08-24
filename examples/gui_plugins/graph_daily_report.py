@@ -19,15 +19,15 @@ class Plugin(TaskGraphGuiPlugin):
 
     def build_daily_report(self) -> None:
         title = self.graph.create_node(
-            "input.text",
+            "input.string",
             name="Report Title",
-            values={"text": "Daily Production Report"},
+            values={"string": "Daily Production Report"},
             position=(0, 0),
         )
         status = self.graph.create_node(
-            "input.text",
+            "input.string",
             name="Report Status",
-            values={"text": "All scheduled tasks completed."},
+            values={"string": "All scheduled tasks completed."},
             position=(0, 140),
         )
         formatter = self.graph.create_node(
@@ -45,8 +45,8 @@ class Plugin(TaskGraphGuiPlugin):
         self.graph.connect_dependency(title, formatter)
         self.graph.connect_dependency(status, formatter)
         self.graph.connect_dependency(formatter, printer)
-        self.graph.connect_attribute(title, "text", formatter, "value")
-        self.graph.connect_attribute(status, "text", formatter, "value")
+        self.graph.connect_attribute(title, "string", formatter, "value")
+        self.graph.connect_attribute(status, "string", formatter, "value")
         self.graph.connect_attribute(formatter, "text", printer, "value")
         self.graph.add_backdrop(
             title="Daily Report Template",

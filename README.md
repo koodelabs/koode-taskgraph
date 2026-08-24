@@ -82,15 +82,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for pull request guidelines.
 
 ## Built-in Nodes
 
-- Built-in nodes are organized as **System → Run Command/Print**,
-  **Utils → Format Text**, and **Inputs → Text/Number**.
-- **Inputs → Text** outputs a user-provided text value.
+- Built-in nodes are organized as **System → Run Command/Python Script/Print**,
+  **Utils → Format Text**, and **Inputs → String/Number/Path/List/Dict**.
+- **Inputs → String** outputs a user-provided string value.
 - **Inputs → Number** outputs a user-provided numeric value.
+- **Inputs → Path** outputs a user-selected file or directory path.
+- **Inputs → List** outputs a JSON-authored Python list.
+- **Inputs → Dict** outputs a JSON-authored Python dictionary.
 - **System → Print** prints an incoming value and supports an optional prefix.
 - **System → Run Command** executes a command and exposes stdout, stderr, and
   return code outputs. It supports an optional working directory, shell mode,
   timeout, and failure on non-zero exit. Shell mode executes exactly what the
   graph author enters, so only run trusted graphs.
+- **System → Python Script** runs user-provided Python code in a subprocess.
+  The script must define `process(inputs)` and return a dictionary. Connected
+  values arrive through the multi-input `value` port as `inputs["value"]` and
+  `inputs["values"]`. The node exposes `result`, captured `stdout`, and
+  captured `stderr`. The code editor uses a monospace font, keeps line wrapping
+  off, inserts spaces with **Tab**, and unindents with **Shift+Tab**. Python
+  Script runs arbitrary code with the same user permissions as TaskGraph, so
+  only run trusted graphs.
 - **Utils → Format Text** accepts multiple connections into its `value` input.
   Use positional placeholders such as `{0}`, `{1}`, and `{2}` in the template.
   `{value}` remains available as the first input value for simple one-input
@@ -172,7 +183,7 @@ node to edit its properties, then click **Run graph**.
 Create a module in `taskgraph/nodes/` and define a `ProcessNode` subclass:
 
 ```python
-from taskgraph.core.model import NodeProperty, PortSpec, ProcessNode
+from taskgraph.core.model import PortSpec, ProcessNode, TextProperty
 from taskgraph.core.registry import register_node
 
 @register_node
@@ -183,17 +194,17 @@ class PrefixText(ProcessNode):
     inputs = (PortSpec("value", "any"),)
     outputs = (PortSpec("text", "text"),)
     properties = (
-        NodeProperty("prefix", "Prefix", "text", "Result: "),
+        TextProperty("prefix", "Prefix", "Result: "),
     )
 
     def process(self, inputs):
         return {"text": f"{self.prefix}{inputs.get('value', '')}"}
 ```
 
-Property kinds map to generated controls in the Properties panel: `"text"` for
-a line edit, `"file"` for a file path field with a Browse button, `"bool"` for
-a checkbox, `"int"`/`"float"` for numeric fields, and `"choice"` for a
-dropdown using `choices`.
+Property specs map to generated controls in the Properties panel:
+`TextProperty`, `MultilineProperty`, `BoolProperty`, `IntProperty`,
+`FloatProperty`, `ChoiceProperty`, and `PathProperty`. Use typed specs for new
+nodes so property-specific behavior stays with the property declaration.
 
 Modules in `taskgraph/nodes/` are discovered automatically. Custom modules can
 also live anywhere on disk:
@@ -261,9 +272,9 @@ class Plugin(TaskGraphGuiPlugin):
 
     def build_daily_report(self):
         text = self.graph.create_node(
-            "input.text",
+            "input.string",
             name="Report Title",
-            values={"text": "Daily Production Report"},
+            values={"string": "Daily Production Report"},
             position=(0, 0),
         )
         printer = self.graph.create_node(
@@ -272,7 +283,7 @@ class Plugin(TaskGraphGuiPlugin):
             position=(320, 0),
         )
         self.graph.connect_dependency(text, printer)
-        self.graph.connect_attribute(text, "text", printer, "value")
+        self.graph.connect_attribute(text, "string", printer, "value")
         self.graph.add_backdrop(
             title="Daily Report Template",
             note="This graph was created by a GUI plugin.",
@@ -281,10 +292,7 @@ class Plugin(TaskGraphGuiPlugin):
         )
 ```
 
-Older flat helpers such as `api.create_node(...)` and
-`api.add_menu_action(...)`, plus the old `register_taskgraph_plugin(api)`
-function entrypoint, are still supported for compatibility. New plugins should
-use the OOP `Plugin` class and namespaced API.
+GUI plugins must define an OOP `Plugin` class and use the namespaced API.
 
 Load GUI plugins from **Plugins → Add GUI Plugin Location…** for the current
 session. GUI plugin locations are not saved or automatically reloaded on the

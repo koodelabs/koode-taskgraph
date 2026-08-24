@@ -21,12 +21,180 @@ class PortSpec:
 class NodeProperty:
     name: str
     label: str
-    kind: str
     default: Any = None
-    choices: tuple[Any, ...] = ()
-    minimum: float | None = None
-    maximum: float | None = None
 
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        raise NotImplementedError
+
+
+class TextProperty(NodeProperty):
+    def __init__(self, name: str, label: str, default: str = ""):
+        super().__init__(name, label, default)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import QLineEdit
+
+        widget = QLineEdit("" if value is None else str(value), parent)
+        widget.editingFinished.connect(
+            lambda editor=widget: on_change(self.name, editor.text())
+        )
+        return widget
+
+
+class MultilineProperty(NodeProperty):
+    def __init__(self, name: str, label: str, default: str = ""):
+        super().__init__(name, label, default)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from taskgraph.ui.code_editor import CodeEditor
+
+        widget = CodeEditor("" if value is None else str(value), parent)
+        widget.textChanged.connect(
+            lambda editor=widget: on_change(self.name, editor.toPlainText())
+        )
+        return widget
+
+
+class BoolProperty(NodeProperty):
+    def __init__(self, name: str, label: str, default: bool = False):
+        super().__init__(name, label, default)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import QCheckBox
+
+        widget = QCheckBox(parent)
+        widget.setChecked(bool(value))
+        widget.toggled.connect(lambda checked: on_change(self.name, checked))
+        return widget
+
+
+class IntProperty(NodeProperty):
+    def __init__(
+        self,
+        name: str,
+        label: str,
+        default: int = 0,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ):
+        super().__init__(name, label, default)
+        object.__setattr__(self, "minimum", minimum)
+        object.__setattr__(self, "maximum", maximum)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import QSpinBox
+
+        widget = QSpinBox(parent)
+        widget.setRange(
+            int(self.minimum if self.minimum is not None else -1_000_000),
+            int(self.maximum if self.maximum is not None else 1_000_000),
+        )
+        widget.setValue(int(value or 0))
+        widget.valueChanged.connect(lambda number: on_change(self.name, number))
+        return widget
+
+
+class FloatProperty(NodeProperty):
+    def __init__(
+        self,
+        name: str,
+        label: str,
+        default: float = 0.0,
+        minimum: float | None = None,
+        maximum: float | None = None,
+    ):
+        super().__init__(name, label, default)
+        object.__setattr__(self, "minimum", minimum)
+        object.__setattr__(self, "maximum", maximum)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import QDoubleSpinBox
+
+        widget = QDoubleSpinBox(parent)
+        widget.setDecimals(4)
+        widget.setRange(
+            self.minimum if self.minimum is not None else -1e12,
+            self.maximum if self.maximum is not None else 1e12,
+        )
+        widget.setValue(float(value or 0))
+        widget.valueChanged.connect(lambda number: on_change(self.name, number))
+        return widget
+
+
+class ChoiceProperty(NodeProperty):
+    def __init__(
+        self,
+        name: str,
+        label: str,
+        choices: tuple[Any, ...],
+        default: Any = None,
+    ):
+        if default is None and choices:
+            default = choices[0]
+        super().__init__(name, label, default)
+        object.__setattr__(self, "choices", choices)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import QComboBox
+
+        widget = QComboBox(parent)
+        widget.addItems([str(choice) for choice in self.choices])
+        if value in self.choices:
+            widget.setCurrentIndex(self.choices.index(value))
+        widget.currentIndexChanged.connect(
+            lambda index: on_change(self.name, self.choices[index])
+        )
+        return widget
+
+
+class PathProperty(NodeProperty):
+    def __init__(
+        self,
+        name: str,
+        label: str,
+        default: str = "",
+        directory: bool = False,
+    ):
+        super().__init__(name, label, default)
+        object.__setattr__(self, "directory", directory)
+
+    def create_editor(self, node: ProcessNode, value: Any, on_change, parent=None):
+        from qtpy.QtWidgets import (
+            QFileDialog,
+            QHBoxLayout,
+            QLineEdit,
+            QPushButton,
+            QWidget,
+        )
+
+        widget = QWidget(parent)
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+        path = QLineEdit("" if value is None else str(value), widget)
+        browse = QPushButton("Browse...", widget)
+
+        def commit_path() -> None:
+            on_change(self.name, path.text())
+
+        def browse_path() -> None:
+            if self.directory:
+                selected_path = QFileDialog.getExistingDirectory(
+                    widget, f"Select {self.label}", path.text()
+                )
+            else:
+                selected_path, _ = QFileDialog.getOpenFileName(
+                    widget, f"Select {self.label}", path.text()
+                )
+            if selected_path:
+                path.setText(selected_path)
+                commit_path()
+
+        browse.clicked.connect(browse_path)
+        path.editingFinished.connect(commit_path)
+        layout.addWidget(path, 1)
+        layout.addWidget(browse)
+        return widget
 
 class ProcessNode:
     type_id: ClassVar[str] = "core.process"

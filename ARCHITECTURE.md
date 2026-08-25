@@ -123,6 +123,18 @@ The instance is the real node placed in the graph.
 
 Properties are editable settings on a node.
 
+There are two separate things:
+
+```text
+Property definition
+    Describes one editable setting.
+    Example: TextProperty("name", "Name", "World")
+
+Property value
+    The actual value on a specific node.
+    Example: node.values["name"] = "World"
+```
+
 Example:
 
 ```python
@@ -136,12 +148,11 @@ Simple meaning:
 
 ```text
 +------------------------------+
-| Property                     |
+| TextProperty                 |
 |------------------------------|
 | name       internal key      |
 | label      text shown in UI  |
 | default    starting value    |
-| widget     Qt editor widget  |
 +------------------------------+
 ```
 
@@ -157,37 +168,162 @@ means:
 Internal name:  name
 UI label:       Name
 Default value:  World
-Qt widget:      QLineEdit
 ```
 
-Property flow:
+The property definition does not store the current value.
 
-```text
-Node defines properties
-    |
-    v
-Node instance stores values
-    |
-    v
-User selects node
-    |
-    v
-Properties panel asks each property to create its widget
-    |
-    v
-User edits widget
-    |
-    v
-node.values is updated
-```
-
-The actual values live on the node:
+The node instance stores the current value:
 
 ```python
 node.values = {
     "name": "World",
     "shout": False,
 }
+```
+
+When the user selects a node, the Properties panel asks each property to create
+its Qt editor widget.
+
+```text
+User selects node
+    |
+    v
+PropertyEditor.set_node(node)
+    |
+    v
+Loop over node.properties
+    |
+    v
+property.create_editor(...)
+    |
+    v
+Qt widget is created now
+```
+
+#### `create_editor()`
+
+`create_editor()` is the function that turns a property definition into a real
+Qt widget.
+
+It lives on each property class.
+
+```text
+TextProperty      creates QLineEdit
+BoolProperty      creates QCheckBox
+IntProperty       creates QSpinBox
+FloatProperty     creates QDoubleSpinBox
+ChoiceProperty    creates QComboBox
+PathProperty      creates path text field + Browse button
+MultilineProperty creates CodeEditor
+```
+
+The Properties panel calls it here:
+
+```python
+widget = spec.create_editor(
+    node,
+    node.values.get(spec.name),
+    self._set,
+    self._body,
+)
+```
+
+Simple meaning:
+
+```text
+spec
+    The property definition.
+    Example: TextProperty("name", "Name", "World")
+
+node
+    The selected node instance.
+
+node.values.get(spec.name)
+    The current value for this property.
+    Example: node.values["name"]
+
+self._set
+    Callback used to save changed values back to the node.
+
+self._body
+    Parent Qt widget for the editor.
+```
+
+The function returns a Qt widget:
+
+```text
+create_editor(...)
+    |
+    v
+QLineEdit / QCheckBox / QSpinBox / etc.
+```
+
+For example, `TextProperty.create_editor()` creates a `QLineEdit`.
+
+```python
+class TextProperty(NodeProperty):
+    def create_editor(self, node, value, on_change, parent=None):
+        widget = QLineEdit(value, parent)
+        widget.editingFinished.connect(
+            lambda: on_change(self.name, widget.text())
+        )
+        return widget
+```
+
+Step by step:
+
+```text
+1. PropertyEditor is rebuilding the right-side panel.
+
+2. It sees TextProperty("name", "Name", "World").
+
+3. It calls:
+       TextProperty.create_editor(...)
+
+4. TextProperty creates:
+       QLineEdit
+
+5. TextProperty connects QLineEdit.editingFinished
+   to the on_change callback.
+
+6. TextProperty returns the QLineEdit.
+
+7. PropertyEditor places the QLineEdit in the form.
+```
+
+`on_change` is not a separate global function. It is the callback passed by
+`PropertyEditor`.
+
+```text
+PropertyEditor passes self._set as on_change
+    |
+    v
+Property widget calls on_change(name, value)
+    |
+    v
+PropertyEditor._set(name, value)
+    |
+    v
+node.values[name] = value
+```
+
+So the responsibility is:
+
+```text
++------------------------------+
+| Property class               |
+|------------------------------|
+| Creates the Qt editor widget |
++---------------+--------------+
+                |
+                v
++------------------------------+
+| PropertyEditor               |
+|------------------------------|
+| Places widget in the panel   |
+| Writes changed values back   |
+| into node.values             |
++------------------------------+
 ```
 
 Inside `process()`, you can read them like normal attributes:

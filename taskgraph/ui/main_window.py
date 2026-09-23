@@ -1,3 +1,5 @@
+"""Main Qt window, menus, dock panels, palette, and GUI execution worker."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -33,6 +35,14 @@ from taskgraph.ui.theme import APP_STYLESHEET
 
 
 class GraphExecutionWorker(QObject):
+    """QObject worker that runs GraphExecutor inside a QThread.
+
+    Attributes:
+        graph: Graph model being executed.
+        worker_count: Number of executor worker threads.
+        cancel_event: Event used to request cancellation.
+    """
+
     event = Signal(str)
     node_state = Signal(str, str)
     completed = Signal(object)
@@ -40,16 +50,35 @@ class GraphExecutionWorker(QObject):
     cancelled = Signal(str)
 
     def __init__(self, graph, worker_count):
+        """Create a worker for one graph run.
+
+        Args:
+            graph: Graph model to execute.
+            worker_count: Number of worker threads used by the executor.
+
+        Returns:
+            None.
+        """
         super().__init__()
         self.graph = graph
         self.worker_count = worker_count
         self.cancel_event = Event()
 
     def request_cancel(self) -> None:
+        """Ask the running graph execution to cancel cooperatively.
+
+        Returns:
+            None.
+        """
         self.cancel_event.set()
 
     @Slot()
     def run(self) -> None:
+        """Execute the graph and emit Qt signals for completion or failure.
+
+        Returns:
+            None.
+        """
         try:
             result = execute_graph(
                 self.graph,
@@ -69,13 +98,34 @@ class GraphExecutionWorker(QObject):
 
 
 class NodePaletteTree(QTreeWidget):
+    """Tree widget that supports dragging registered node type ids.
+
+    The selected tree item stores the node type id in ``Qt.UserRole``.
+    """
+
     def __init__(self, parent=None):
+        """Create the drag-enabled node palette tree.
+
+        Args:
+            parent: Optional Qt parent widget.
+
+        Returns:
+            None.
+        """
         super().__init__(parent)
         self.setHeaderHidden(True)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragOnly)
 
     def startDrag(self, supported_actions) -> None:
+        """Start a drag operation containing the selected node type id.
+
+        Args:
+            supported_actions: Qt-supported drag actions for this drag operation.
+
+        Returns:
+            None.
+        """
         item = self.currentItem()
         type_id = item.data(0, Qt.UserRole) if item else None
         if not type_id:
@@ -88,9 +138,24 @@ class NodePaletteTree(QTreeWidget):
 
 
 class NodePalette(QWidget):
+    """Searchable list of registered node classes grouped by category.
+
+    Attributes:
+        search: Text box used to filter registered nodes.
+        tree: Drag-enabled tree of registered node types.
+    """
+
     itemDoubleClicked = Signal(object, int)
 
     def __init__(self, parent=None):
+        """Create the node palette search box and tree.
+
+        Args:
+            parent: Optional Qt parent widget.
+
+        Returns:
+            None.
+        """
         super().__init__(parent)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search nodes...")
@@ -105,6 +170,11 @@ class NodePalette(QWidget):
         self.reload()
 
     def reload(self) -> None:
+        """Rebuild the palette from the current node registry and search text.
+
+        Returns:
+            None.
+        """
         query = self.search.text().strip().lower()
         self.tree.clear()
         for category, classes in nodes_by_category().items():
@@ -132,7 +202,22 @@ class NodePalette(QWidget):
 
 
 class MainWindow(QMainWindow):
+    """Top-level TaskGraph GUI window.
+
+    Attributes:
+        scene: Editable graph scene.
+        view: Graphics view displaying the graph scene.
+        palette: Searchable node palette.
+        properties: Properties panel for selected nodes/backdrops.
+        console: Execution log panel.
+    """
+
     def __init__(self):
+        """Create the full application window and wire all UI signals.
+
+        Returns:
+            None.
+        """
         super().__init__()
         self.setWindowTitle("TaskGraph — Untitled")
         self.resize(1400, 850)
@@ -176,6 +261,16 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Drag nodes onto the canvas. Connect output ports to input ports.")
 
     def _add_dock(self, title, widget, area) -> QDockWidget:
+        """Create and add a dock widget to the main window.
+
+        Args:
+            title: Dock title shown in the UI.
+            widget: Widget placed inside the dock.
+            area: Qt dock area where the dock should be inserted.
+
+        Returns:
+            QDockWidget: Created dock widget.
+        """
         dock = QDockWidget(title, self)
         dock.setObjectName(f"{title.lower()}Dock")
         dock.setWidget(widget)
@@ -183,9 +278,25 @@ class MainWindow(QMainWindow):
         return dock
 
     def _create_actions(self) -> None:
+        """Create all built-in actions, shortcuts, and menu entries.
+
+        Returns:
+            None.
+        """
         self.actions: dict[str, QAction] = {}
 
         def make_action(key, text, shortcut, callback):
+            """Create a QAction and store it under an internal key.
+
+            Args:
+                key: Internal action dictionary key.
+                text: User-facing action label.
+                shortcut: Optional keyboard shortcut.
+                callback: Callable invoked when the action is triggered.
+
+            Returns:
+                QAction: Created action.
+            """
             action = QAction(text, self)
             if shortcut:
                 action.setShortcut(shortcut)
@@ -328,6 +439,14 @@ class MainWindow(QMainWindow):
         )
 
     def menu_for_plugin(self, name: str):
+        """Return an existing or newly created top-level plugin menu.
+
+        Args:
+            name: Menu label requested by the plugin.
+
+        Returns:
+            QMenu: Existing or newly created top-level menu.
+        """
         key = self._plugin_menu_key(name)
         if key in self.menus:
             return self.menus[key]
@@ -341,6 +460,16 @@ class MainWindow(QMainWindow):
         widget,
         area: Qt.DockWidgetArea = Qt.RightDockWidgetArea,
     ) -> QDockWidget:
+        """Add a dock panel owned by a GUI plugin.
+
+        Args:
+            title: Dock title shown in the UI.
+            widget: Widget placed inside the dock.
+            area: Qt dock area where the dock should be inserted.
+
+        Returns:
+            QDockWidget: Created plugin dock.
+        """
         dock = self._add_dock(title, widget, area)
         self.plugin_docks.append(dock)
         self.menus["view"].insertAction(
@@ -351,9 +480,25 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def _plugin_menu_key(name: str) -> str:
+        """Normalize plugin menu labels into dictionary keys.
+
+        Args:
+            name: Raw menu label.
+
+        Returns:
+            str: Normalized dictionary key.
+        """
         return name.replace("&", "").strip().lower()
 
     def _show_console_context_menu(self, position) -> None:
+        """Show the execution console context menu with clear-log action.
+
+        Args:
+            position: Position inside the console viewport.
+
+        Returns:
+            None.
+        """
         menu = self.console.createStandardContextMenu()
         menu.addSeparator()
         menu.addAction(self.actions["clear_log"])
@@ -361,11 +506,21 @@ class MainWindow(QMainWindow):
         menu.deleteLater()
 
     def show_all_panels(self) -> None:
+        """Show and raise every built-in dock panel.
+
+        Returns:
+            None.
+        """
         for dock in self.docks.values():
             dock.show()
             dock.raise_()
 
     def add_custom_node_location(self) -> None:
+        """Prompt for a custom node folder, load it, and save the location.
+
+        Returns:
+            None.
+        """
         directory = QFileDialog.getExistingDirectory(
             self, "Add Custom Node Location"
         )
@@ -392,6 +547,11 @@ class MainWindow(QMainWindow):
         )
 
     def add_gui_plugin_location(self) -> None:
+        """Prompt for a GUI plugin folder and load it for this session.
+
+        Returns:
+            None.
+        """
         directory = QFileDialog.getExistingDirectory(
             self, "Add GUI Plugin Location"
         )
@@ -414,6 +574,14 @@ class MainWindow(QMainWindow):
         )
 
     def set_worker_count(self, count: int) -> None:
+        """Set and persist the graph execution worker count.
+
+        Args:
+            count: Requested worker count.
+
+        Returns:
+            None.
+        """
         self.worker_count = min(
             VALID_WORKER_COUNTS,
             key=lambda valid: abs(valid - count),
@@ -424,30 +592,68 @@ class MainWindow(QMainWindow):
         )
 
     def _palette_double_clicked(self, item, column) -> None:
+        """Create the double-clicked node type at the view center.
+
+        Args:
+            item: Tree item that was double-clicked.
+            column: Tree column index.
+
+        Returns:
+            None.
+        """
         type_id = item.data(0, Qt.UserRole)
         if type_id:
             center = self.view.mapToScene(self.view.viewport().rect().center())
             self.add_node(type_id, center)
 
     def add_node(self, type_id: str, position: QPointF) -> None:
+        """Create a node by type id and add it to the scene.
+
+        Args:
+            type_id: Registered node type id.
+            position: Scene position for the new node.
+
+        Returns:
+            None.
+        """
         try:
             self.scene.add_process_node(create_node(type_id), position)
         except Exception as exc:
             QMessageBox.warning(self, "Could not add node", str(exc))
 
     def add_backdrop(self) -> None:
+        """Add a new backdrop near the center of the current viewport.
+
+        Returns:
+            None.
+        """
         position = self.view.mapToScene(self.view.viewport().rect().center())
         self.scene.add_backdrop(position - QPointF(240, 150))
 
     def _mark_dirty(self) -> None:
+        """Mark the graph as modified and update the window title.
+
+        Returns:
+            None.
+        """
         self.dirty = True
         self._update_title()
 
     def _update_title(self) -> None:
+        """Refresh the window title with file name and dirty marker.
+
+        Returns:
+            None.
+        """
         name = self.current_path.name if self.current_path else "Untitled"
         self.setWindowTitle(f"TaskGraph — {name}{' *' if self.dirty else ''}")
 
     def _confirm_discard(self) -> bool:
+        """Ask whether unsaved graph changes should be discarded.
+
+        Returns:
+            bool: True when it is safe to discard the current graph.
+        """
         if not self.dirty:
             return True
         answer = QMessageBox.question(
@@ -457,6 +663,11 @@ class MainWindow(QMainWindow):
         return answer == QMessageBox.Yes
 
     def new_graph(self) -> None:
+        """Create a new empty graph after confirming unsaved changes.
+
+        Returns:
+            None.
+        """
         if not self._confirm_discard():
             return
         self.scene.set_graph(Graph())
@@ -466,6 +677,11 @@ class MainWindow(QMainWindow):
         self._update_title()
 
     def open_graph(self) -> None:
+        """Open a saved graph file into the scene.
+
+        Returns:
+            None.
+        """
         if not self._confirm_discard():
             return
         filename, _ = QFileDialog.getOpenFileName(self, "Open graph", "", "TaskGraph (*.taskgraph *.json)")
@@ -482,6 +698,11 @@ class MainWindow(QMainWindow):
         self.frame_all()
 
     def save_graph(self) -> bool:
+        """Save the current graph, prompting for a path if needed.
+
+        Returns:
+            bool: True when the graph was saved, otherwise False.
+        """
         if not self.current_path:
             return self.save_graph_as()
         try:
@@ -495,6 +716,11 @@ class MainWindow(QMainWindow):
         return True
 
     def save_graph_as(self) -> bool:
+        """Prompt for a path and save the current graph there.
+
+        Returns:
+            bool: True when the graph was saved, otherwise False.
+        """
         filename, _ = QFileDialog.getSaveFileName(self, "Save graph", "", "TaskGraph (*.taskgraph)")
         if not filename:
             return False
@@ -505,6 +731,11 @@ class MainWindow(QMainWindow):
         return self.save_graph()
 
     def run_graph(self) -> None:
+        """Start graph execution in a background QThread.
+
+        Returns:
+            None.
+        """
         if self.execution_thread and self.execution_thread.isRunning():
             return
         self.console.clear()
@@ -545,18 +776,47 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _execution_completed(self, result) -> None:
+        """Handle successful graph execution completion.
+
+        Args:
+            result: Execution result emitted by the worker.
+
+        Returns:
+            None.
+        """
         self.console.appendPlainText(f"\nCompleted {len(result.order)} node(s).")
         self.statusBar().showMessage("Graph execution completed", 5000)
 
     def _execution_failed(self, message: str) -> None:
+        """Handle graph execution failure.
+
+        Args:
+            message: Failure message emitted by the worker.
+
+        Returns:
+            None.
+        """
         self.console.appendPlainText(f"\nERROR: {message}")
         self.statusBar().showMessage("Graph execution failed", 5000)
 
     def _execution_cancelled(self, message: str) -> None:
+        """Handle graph execution cancellation.
+
+        Args:
+            message: Cancellation message emitted by the worker.
+
+        Returns:
+            None.
+        """
         self.console.appendPlainText(f"\nCANCELLED: {message}")
         self.statusBar().showMessage("Graph execution cancelled", 5000)
 
     def cancel_execution(self) -> None:
+        """Request cancellation for the currently running graph.
+
+        Returns:
+            None.
+        """
         if not self.execution_worker:
             return
         self.actions["cancel"].setEnabled(False)
@@ -564,6 +824,11 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Cancelling all running processes…")
 
     def _execution_thread_finished(self) -> None:
+        """Restore UI state after the execution worker thread exits.
+
+        Returns:
+            None.
+        """
         if self.execution_thread:
             self.execution_thread.deleteLater()
         self.execution_thread = None
@@ -580,6 +845,15 @@ class MainWindow(QMainWindow):
             self.actions[key].setEnabled(True)
 
     def _set_node_execution_state(self, node_id: str, state: str) -> None:
+        """Apply an executor state update to the graph scene.
+
+        Args:
+            node_id: Node id whose visual state changed.
+            state: New execution state.
+
+        Returns:
+            None.
+        """
         self.scene.set_execution_state(node_id, state)
         if state == "running":
             # Render immediately so even the final node's running state reaches
@@ -587,16 +861,34 @@ class MainWindow(QMainWindow):
             self.view.viewport().repaint()
 
     def frame_all(self) -> None:
+        """Fit all scene items into the viewport.
+
+        Returns:
+            None.
+        """
         rect = self.scene.itemsBoundingRect()
         if rect.isValid() and not rect.isEmpty():
             self.view.fitInView(rect.adjusted(-80, -80, 80, 80), Qt.KeepAspectRatio)
 
     def auto_arrange_nodes(self) -> None:
+        """Auto-arrange nodes and frame the resulting layout.
+
+        Returns:
+            None.
+        """
         self.scene.auto_arrange()
         self.frame_all()
         self.statusBar().showMessage("Nodes arranged by dependency order", 4000)
 
     def closeEvent(self, event) -> None:
+        """Prevent closing during execution and confirm unsaved changes.
+
+        Args:
+            event: Qt close event.
+
+        Returns:
+            None.
+        """
         if self.execution_thread and self.execution_thread.isRunning():
             self.statusBar().showMessage(
                 "Wait for graph execution to finish before closing", 5000

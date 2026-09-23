@@ -22,6 +22,17 @@ from taskgraph.nodes import load_builtin_nodes
 
 
 def worker_count(value: str) -> int:
+    """Parse and validate the CLI worker-count option.
+
+    Args:
+        value: Raw command-line option value.
+
+    Returns:
+        int: Validated worker count.
+
+    Raises:
+        argparse.ArgumentTypeError: If the value is not an allowed worker count.
+    """
     try:
         count = int(value)
     except ValueError as exc:
@@ -34,6 +45,11 @@ def worker_count(value: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser.
+
+    Returns:
+        argparse.ArgumentParser: Configured parser for ``koode-taskgraph-cli``.
+    """
     parser = argparse.ArgumentParser(
         prog="koode-taskgraph-cli",
         description="Execute a TaskGraph file without starting the Qt UI.",
@@ -62,6 +78,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run a saved graph from the command line without opening the GUI.
+
+    Args:
+        argv: Optional argument list. When omitted, ``sys.argv`` is used.
+
+    Returns:
+        int: Process-style exit code.
+    """
     args = build_parser().parse_args(argv)
     graph_path = args.file.expanduser()
     if not graph_path.is_file():
@@ -86,6 +110,15 @@ def main(argv: list[str] | None = None) -> int:
     previous_handler = signal.getsignal(signal.SIGINT)
 
     def request_cancel(_signum, _frame) -> None:
+        """Handle Ctrl+C by requesting cooperative graph cancellation.
+
+        Args:
+            _signum: Received signal number.
+            _frame: Interrupted stack frame.
+
+        Returns:
+            None.
+        """
         if not cancel_event.is_set():
             print("Cancellation requested…", file=sys.stderr)
             cancel_event.set()

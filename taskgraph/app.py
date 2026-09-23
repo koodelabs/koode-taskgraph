@@ -1,3 +1,5 @@
+"""Qt application entrypoint for Koode TaskGraph."""
+
 import os
 import sys
 
@@ -11,6 +13,11 @@ from taskgraph.ui.plugins import load_gui_plugin_directory
 
 
 def main() -> int:
+    """Start the Qt GUI application and load configured extensions.
+
+    Returns:
+        int: Qt application exit code.
+    """
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("TaskGraph")
     app.setOrganizationName("TaskGraph")

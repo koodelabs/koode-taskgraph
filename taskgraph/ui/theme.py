@@ -1,3 +1,5 @@
+"""Application-wide Qt stylesheet."""
+
 APP_STYLESHEET = """
 QWidget { background: #171b20; color: #d5dbe3; font-size: 12px; }
 QMainWindow, QDockWidget { background: #12161a; }

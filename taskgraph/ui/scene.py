@@ -1,3 +1,5 @@
+"""Graph scene and view classes for editing node graphs in Qt."""
+
 from __future__ import annotations
 
 import json
@@ -15,10 +17,28 @@ CLIPBOARD_MIME = "application/x-taskgraph-nodes"
 
 
 class GraphScene(QGraphicsScene):
+    """QGraphicsScene that keeps graphics items synchronized with a Graph.
+
+    Attributes:
+        graph: Graph model being edited.
+        node_items: Node graphics items keyed by node id.
+        connection_items: Graphics items for graph connections.
+        execution_states: Current visual execution states keyed by node id.
+    """
+
     node_selected = Signal(object)
     graph_changed = Signal()
 
     def __init__(self, graph: Graph | None = None, parent=None):
+        """Create a scene for an existing graph or a new empty graph.
+
+        Args:
+            graph: Optional graph model to display.
+            parent: Optional Qt parent object.
+
+        Returns:
+            None.
+        """
         super().__init__(parent)
         self.setSceneRect(-5000, -5000, 10000, 10000)
         self.graph = graph or Graph()
@@ -33,6 +53,11 @@ class GraphScene(QGraphicsScene):
         self.rebuild()
 
     def rebuild(self) -> None:
+        """Recreate all graphics items from the current graph model.
+
+        Returns:
+            None.
+        """
         self.clear()
         self.backdrop_items.clear()
         self.node_items.clear()
@@ -53,11 +78,28 @@ class GraphScene(QGraphicsScene):
             self.connection_items.append(item)
 
     def set_graph(self, graph: Graph) -> None:
+        """Replace the current graph model and redraw the scene.
+
+        Args:
+            graph: New graph model to display and edit.
+
+        Returns:
+            None.
+        """
         self.graph = graph
         self.rebuild()
         self.graph_changed.emit()
 
     def add_process_node(self, node, position: QPointF) -> NodeItem:
+        """Add a process node to the graph and scene at a position.
+
+        Args:
+            node: Process node model to add.
+            position: Scene position where the node should be placed.
+
+        Returns:
+            NodeItem: Graphics item created for the node.
+        """
         self.graph.add_node(node, (position.x(), position.y()))
         item = NodeItem(self, node)
         item.setPos(position)
@@ -68,6 +110,14 @@ class GraphScene(QGraphicsScene):
         return item
 
     def add_backdrop(self, position: QPointF) -> BackdropItem:
+        """Add a new backdrop to the graph and scene.
+
+        Args:
+            position: Scene position where the backdrop should be placed.
+
+        Returns:
+            BackdropItem: Graphics item created for the backdrop.
+        """
         backdrop = Backdrop(position=(position.x(), position.y()))
         self.graph.add_backdrop(backdrop)
         item = BackdropItem(self, backdrop)
@@ -80,6 +130,14 @@ class GraphScene(QGraphicsScene):
         return item
 
     def node_moved(self, item: NodeItem) -> None:
+        """Persist a moved node's position and refresh attached edges.
+
+        Args:
+            item: Node graphics item that moved.
+
+        Returns:
+            None.
+        """
         pos = item.pos()
         self.graph.positions[item.node.id] = (pos.x(), pos.y())
         for edge in self.connection_items:
@@ -88,6 +146,14 @@ class GraphScene(QGraphicsScene):
         self.graph_changed.emit()
 
     def begin_connection(self, port: PortItem) -> None:
+        """Start drawing a temporary connection from a port.
+
+        Args:
+            port: Port item where the drag starts.
+
+        Returns:
+            None.
+        """
         self.cancel_connection()
         self._drag_port = port
         self._drag_item = ConnectionItem(self)
@@ -95,6 +161,14 @@ class GraphScene(QGraphicsScene):
         self._drag_item.set_points(port.scenePos(), port.scenePos())
 
     def update_connection(self, position: QPointF) -> None:
+        """Move the temporary connection endpoint while dragging.
+
+        Args:
+            position: Current scene position of the drag cursor.
+
+        Returns:
+            None.
+        """
         if not self._drag_item or not self._drag_port:
             return
         if self._drag_port.is_output:
@@ -103,6 +177,14 @@ class GraphScene(QGraphicsScene):
             self._drag_item.set_points(position, self._drag_port.scenePos())
 
     def finish_connection(self, position: QPointF) -> None:
+        """Create a graph connection when the drag ends on a compatible port.
+
+        Args:
+            position: Scene position where the drag ended.
+
+        Returns:
+            None.
+        """
         start = self._drag_port
         targets = [item for item in self.items(position) if isinstance(item, PortItem)]
         target = next((port for port in targets if port is not start), None)
@@ -132,12 +214,22 @@ class GraphScene(QGraphicsScene):
         self.graph_changed.emit()
 
     def cancel_connection(self) -> None:
+        """Remove any temporary connection currently being dragged.
+
+        Returns:
+            None.
+        """
         if self._drag_item and self._drag_item.scene():
             self.removeItem(self._drag_item)
         self._drag_item = None
         self._drag_port = None
 
     def delete_selected(self) -> None:
+        """Delete selected nodes, connections, and backdrops.
+
+        Returns:
+            None.
+        """
         selected = list(self.selectedItems())
         edges = {item.connection for item in selected if isinstance(item, ConnectionItem) and item.connection}
         node_ids = {item.node.id for item in selected if isinstance(item, NodeItem)}
@@ -157,6 +249,11 @@ class GraphScene(QGraphicsScene):
             self.graph_changed.emit()
 
     def toggle_selected_disabled(self) -> None:
+        """Toggle disabled state for all selected node items.
+
+        Returns:
+            None.
+        """
         nodes = [item for item in self.selectedItems() if isinstance(item, NodeItem)]
         if not nodes:
             return
@@ -167,6 +264,11 @@ class GraphScene(QGraphicsScene):
         self.graph_changed.emit()
 
     def copy_selected(self) -> bool:
+        """Copy selected nodes and internal connections to the clipboard.
+
+        Returns:
+            bool: True when node data was copied, otherwise False.
+        """
         selected_ids = {
             item.node.id for item in self.selectedItems()
             if isinstance(item, NodeItem)
@@ -201,6 +303,11 @@ class GraphScene(QGraphicsScene):
         return True
 
     def paste_clipboard(self) -> list[NodeItem]:
+        """Paste TaskGraph node clipboard data into the scene.
+
+        Returns:
+            list[NodeItem]: Newly pasted node items.
+        """
         mime = QApplication.clipboard().mimeData()
         raw = bytes(mime.data(CLIPBOARD_MIME)) if mime.hasFormat(CLIPBOARD_MIME) else b""
         if not raw:
@@ -244,6 +351,11 @@ class GraphScene(QGraphicsScene):
             return []
 
     def _selection_changed(self) -> None:
+        """Emit the editable selected node/backdrop for the Properties panel.
+
+        Returns:
+            None.
+        """
         selected = self.selectedItems()
         editable = next(
             (item.node for item in selected if isinstance(item, NodeItem)),
@@ -260,23 +372,46 @@ class GraphScene(QGraphicsScene):
         self.node_selected.emit(editable)
 
     def refresh_nodes(self) -> None:
+        """Refresh visual node and backdrop items after model edits.
+
+        Returns:
+            None.
+        """
         for item in self.node_items.values():
             item.update()
         for item in self.backdrop_items.values():
             item.refresh_geometry()
 
     def reset_execution_states(self) -> None:
+        """Clear all visual execution states from node items.
+
+        Returns:
+            None.
+        """
         self.execution_states.clear()
         self.refresh_nodes()
 
     def set_execution_state(self, node_id: str, state: str) -> None:
+        """Set the visual execution state for one node.
+
+        Args:
+            node_id: Node id whose state should be updated.
+            state: Execution state name, such as ``running`` or ``failed``.
+
+        Returns:
+            None.
+        """
         self.execution_states[node_id] = state
         item = self.node_items.get(node_id)
         if item:
             item.update()
 
     def auto_arrange(self) -> None:
-        """Lay out the dependency graph from left to right in execution layers."""
+        """Lay out the dependency graph from left to right in execution layers.
+
+        Returns:
+            None.
+        """
         if not self.graph.nodes:
             return
         indegree = {node_id: 0 for node_id in self.graph.nodes}
@@ -342,9 +477,24 @@ class GraphScene(QGraphicsScene):
 
 
 class GraphView(QGraphicsView):
+    """Graphics view for zooming, panning, and dropping node types.
+
+    Attributes:
+        node_type_dropped: Signal emitted when a palette node is dropped.
+    """
+
     node_type_dropped = Signal(str, QPointF)
 
     def __init__(self, scene: GraphScene, parent=None):
+        """Create the interactive graph viewport.
+
+        Args:
+            scene: Graph scene displayed by the view.
+            parent: Optional Qt parent widget.
+
+        Returns:
+            None.
+        """
         super().__init__(scene, parent)
         self.setRenderHints(QPainter.Antialiasing | QPainter.TextAntialiasing)
         self.setViewportUpdateMode(QGraphicsView.BoundingRectViewportUpdate)
@@ -356,6 +506,15 @@ class GraphView(QGraphicsView):
         self._pan_start = None
 
     def drawBackground(self, painter: QPainter, rect: QRectF) -> None:
+        """Draw the dark grid background.
+
+        Args:
+            painter: Qt painter used for drawing.
+            rect: Visible scene rectangle to repaint.
+
+        Returns:
+            None.
+        """
         painter.fillRect(rect, QColor("#1a1f24"))
         left = int(rect.left()) - int(rect.left()) % 24
         top = int(rect.top()) - int(rect.top()) % 24
@@ -379,12 +538,28 @@ class GraphView(QGraphicsView):
             y += 120
 
     def wheelEvent(self, event) -> None:
+        """Zoom the view around the mouse pointer.
+
+        Args:
+            event: Qt wheel event.
+
+        Returns:
+            None.
+        """
         factor = 1.18 if event.angleDelta().y() > 0 else 1 / 1.18
         current = self.transform().m11()
         if 0.2 < current * factor < 4.0:
             self.scale(factor, factor)
 
     def mousePressEvent(self, event) -> None:
+        """Start middle-mouse panning or delegate normal selection.
+
+        Args:
+            event: Qt mouse press event.
+
+        Returns:
+            None.
+        """
         if event.button() == Qt.MiddleButton:
             self._panning = True
             self._pan_start = event.position()
@@ -394,6 +569,14 @@ class GraphView(QGraphicsView):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        """Pan while middle mouse is held.
+
+        Args:
+            event: Qt mouse move event.
+
+        Returns:
+            None.
+        """
         if self._panning:
             delta = event.position() - self._pan_start
             self._pan_start = event.position()
@@ -404,6 +587,14 @@ class GraphView(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
+        """Stop panning on middle mouse release.
+
+        Args:
+            event: Qt mouse release event.
+
+        Returns:
+            None.
+        """
         if event.button() == Qt.MiddleButton:
             self._panning = False
             self.setCursor(Qt.ArrowCursor)
@@ -412,15 +603,39 @@ class GraphView(QGraphicsView):
         super().mouseReleaseEvent(event)
 
     def dragEnterEvent(self, event) -> None:
+        """Accept node type drags from the node palette.
+
+        Args:
+            event: Qt drag-enter event.
+
+        Returns:
+            None.
+        """
         if event.mimeData().hasFormat("application/x-taskgraph-node"):
             event.acceptProposedAction()
         else:
             super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:
+        """Keep accepting node type drags over the viewport.
+
+        Args:
+            event: Qt drag-move event.
+
+        Returns:
+            None.
+        """
         event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:
+        """Emit a node creation request at the drop position.
+
+        Args:
+            event: Qt drop event containing a node type id.
+
+        Returns:
+            None.
+        """
         type_id = bytes(event.mimeData().data("application/x-taskgraph-node")).decode()
         self.node_type_dropped.emit(type_id, self.mapToScene(event.position().toPoint()))
         event.acceptProposedAction()

@@ -1,3 +1,5 @@
+"""Dependency-based graph execution engine."""
+
 from __future__ import annotations
 
 from collections import defaultdict, deque
@@ -12,15 +14,32 @@ VALID_WORKER_COUNTS = (1, *range(2, 33, 2))
 
 
 class GraphExecutionError(RuntimeError):
+    """Raised when graph execution fails for validation or node errors.
+
+    This is the public base exception for graph execution failures.
+    """
+
     pass
 
 
 class GraphExecutionCancelled(GraphExecutionError):
+    """Raised when graph execution is cancelled by the caller/user.
+
+    This exception is raised after the executor marks pending nodes cancelled.
+    """
+
     pass
 
 
 @dataclass
 class ExecutionResult:
+    """Final graph execution output and executed node order.
+
+    Attributes:
+        order: Node ids in the order they finished successfully.
+        outputs: Output dictionaries keyed first by node id, then by port name.
+    """
+
     order: list[str]
     outputs: dict[str, dict[str, Any]]
 
@@ -32,6 +51,23 @@ def execute_graph(
     on_node_state: Callable[[str, str], None] | None = None,
     cancel_event: Event | None = None,
 ) -> ExecutionResult:
+    """Execute a graph with optional logging, state callbacks, and cancellation.
+
+    Args:
+        graph: Graph model to execute.
+        on_event: Optional callback for execution log messages.
+        max_workers: Number of worker threads to use.
+        on_node_state: Optional callback receiving ``(node_id, state)``.
+        cancel_event: Optional event used to request cooperative cancellation.
+
+    Returns:
+        ExecutionResult: Completed node order and node outputs.
+
+    Raises:
+        ValueError: If ``max_workers`` is not an allowed worker count.
+        GraphExecutionError: If validation or node execution fails.
+        GraphExecutionCancelled: If cancellation is requested during execution.
+    """
     return GraphExecutor(
         graph,
         on_event=on_event,
@@ -41,6 +77,16 @@ def execute_graph(
 
 
 class GraphExecutor:
+    """Run graph nodes according to dependency connections.
+
+    Attributes:
+        graph: Graph model being executed.
+        emit: Callback used for execution log messages.
+        set_state: Callback used for node visual state changes.
+        cancel_event: Event used to request cooperative cancellation.
+        outputs: Completed node outputs keyed by node id.
+    """
+
     def __init__(
         self,
         graph: Graph,
@@ -48,6 +94,17 @@ class GraphExecutor:
         on_node_state: Callable[[str, str], None] | None = None,
         cancel_event: Event | None = None,
     ):
+        """Prepare executor state for one graph execution.
+
+        Args:
+            graph: Graph model to execute.
+            on_event: Optional callback for execution log messages.
+            on_node_state: Optional callback receiving ``(node_id, state)``.
+            cancel_event: Optional event used to request cancellation.
+
+        Returns:
+            None.
+        """
         self.graph = graph
         self.emit = on_event or (lambda _message: None)
         self.set_state = on_node_state or (lambda _node_id, _state: None)
@@ -65,6 +122,19 @@ class GraphExecutor:
         self.cancellation_applied = False
 
     def execute(self, max_workers: int = 4) -> ExecutionResult:
+        """Validate and run the graph, returning node order and outputs.
+
+        Args:
+            max_workers: Number of worker threads used for parallel branches.
+
+        Returns:
+            ExecutionResult: Completed node order and node outputs.
+
+        Raises:
+            ValueError: If ``max_workers`` is not supported.
+            GraphExecutionError: If the graph cannot be executed.
+            GraphExecutionCancelled: If cancellation is requested.
+        """
         self._validate_worker_count(max_workers)
         self._prepare_connections()
         self._validate_attribute_dependencies()
@@ -79,12 +149,31 @@ class GraphExecutor:
 
     @staticmethod
     def _validate_worker_count(max_workers: int) -> None:
+        """Reject unsupported worker counts before starting execution.
+
+        Args:
+            max_workers: Requested worker count.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If the worker count is not 1 or an even number up to 32.
+        """
         if max_workers not in VALID_WORKER_COUNTS:
             raise ValueError(
                 "max_workers must be 1 or an even number between 2 and 32"
             )
 
     def _prepare_connections(self) -> None:
+        """Split graph connections into dependency and attribute lookup tables.
+
+        Returns:
+            None.
+
+        Raises:
+            GraphExecutionError: If a connection references a missing node.
+        """
         for edge in self.graph.connections:
             if (
                 edge.source_node not in self.graph.nodes
@@ -99,6 +188,14 @@ class GraphExecutor:
                 self.incoming[edge.target_node].append(edge)
 
     def _validate_attribute_dependencies(self) -> None:
+        """Ensure every value connection also has a dependency path.
+
+        Returns:
+            None.
+
+        Raises:
+            GraphExecutionError: If an attribute edge has no dependency path.
+        """
         for edge in self.attribute_edges:
             if not self._has_dependency_path(edge.source_node, edge.target_node):
                 source = self.graph.nodes[edge.source_node]
@@ -109,6 +206,15 @@ class GraphExecutor:
                 )
 
     def _has_dependency_path(self, source: str, target: str) -> bool:
+        """Return whether target is reachable from source through dependencies.
+
+        Args:
+            source: Source node id.
+            target: Target node id.
+
+        Returns:
+            bool: True when a dependency path connects source to target.
+        """
         pending = [source]
         visited = set()
         while pending:
@@ -121,6 +227,14 @@ class GraphExecutor:
         return False
 
     def _run(self, max_workers: int) -> None:
+        """Run ready nodes until there is no queued or running work.
+
+        Args:
+            max_workers: Number of worker threads available.
+
+        Returns:
+            None.
+        """
         with ThreadPoolExecutor(
             max_workers=max_workers,
             thread_name_prefix="taskgraph",
@@ -137,6 +251,11 @@ class GraphExecutor:
                 self._handle_finished_futures(finished)
 
     def _apply_cancellation_if_requested(self) -> None:
+        """Mark pending work cancelled after the cancellation event is set.
+
+        Returns:
+            None.
+        """
         if not self.cancel_event.is_set() or self.cancellation_applied:
             return
         self.cancellation_applied = True
@@ -155,6 +274,15 @@ class GraphExecutor:
         pool: ThreadPoolExecutor,
         max_workers: int,
     ) -> None:
+        """Submit queued nodes to the thread pool while capacity is available.
+
+        Args:
+            pool: Thread pool used to execute node ``process`` methods.
+            max_workers: Maximum number of simultaneously running futures.
+
+        Returns:
+            None.
+        """
         while self.queue and len(self.running) < max_workers:
             node_id = self.queue.popleft()
             if node_id in self.terminal:
@@ -173,9 +301,21 @@ class GraphExecutor:
             self.emit(f"Running {node.display_name}")
             self.set_state(node_id, "running")
             node._cancel_event = self.cancel_event
+            node._event_callback = self.emit
             self.running[pool.submit(node.process, node_inputs)] = node_id
 
     def _inputs_for(self, node_id: str) -> dict[str, Any]:
+        """Build the process input dictionary for a ready node.
+
+        Args:
+            node_id: Id of the node that is about to run.
+
+        Returns:
+            dict[str, Any]: Input values keyed by target input port name.
+
+        Raises:
+            GraphExecutionError: If a required upstream output is missing.
+        """
         node = self.graph.nodes[node_id]
         node_inputs: dict[str, Any] = {}
         for edge in self.incoming[node_id]:
@@ -210,6 +350,14 @@ class GraphExecutor:
         self,
         finished: set[Future[dict[str, Any]]],
     ) -> None:
+        """Collect completed node results and update dependency state.
+
+        Args:
+            finished: Futures returned by completed node executions.
+
+        Returns:
+            None.
+        """
         for future in finished:
             node_id = self.running.pop(future)
             node = self.graph.nodes[node_id]
@@ -227,6 +375,7 @@ class GraphExecutor:
                 continue
             finally:
                 node._cancel_event = None
+                node._event_callback = None
 
             if not isinstance(result, dict):
                 self._fail_branch(
@@ -240,18 +389,43 @@ class GraphExecutor:
 
     @staticmethod
     def _discard_cancelled_future(future: Future[dict[str, Any]]) -> None:
+        """Drain a future result after cancellation without surfacing errors.
+
+        Args:
+            future: Future to drain.
+
+        Returns:
+            None.
+        """
         try:
             future.result()
         except Exception:
             pass
 
     def _mark_cancelled(self, node_id: str) -> None:
+        """Record one node as cancelled and emit its execution state.
+
+        Args:
+            node_id: Id of the cancelled node.
+
+        Returns:
+            None.
+        """
         node = self.graph.nodes[node_id]
         self.terminal.add(node_id)
         self.set_state(node_id, "cancelled")
         self.emit(f"Cancelled {node.display_name}")
 
     def _complete(self, node_id: str, result: dict[str, Any]) -> None:
+        """Store one node result and queue newly unblocked downstream nodes.
+
+        Args:
+            node_id: Id of the completed node.
+            result: Output dictionary returned by the node.
+
+        Returns:
+            None.
+        """
         self.outputs[node_id] = result
         self.order.append(node_id)
         self.terminal.add(node_id)
@@ -261,7 +435,15 @@ class GraphExecutor:
                 self.queue.append(target)
 
     def _fail_branch(self, node_id: str, message: str) -> None:
-        """Fail one node and block only nodes that depend on its output."""
+        """Fail one node and block only nodes that depend on its output.
+
+        Args:
+            node_id: Id of the failed node.
+            message: Failure message to report.
+
+        Returns:
+            None.
+        """
         if node_id in self.terminal:
             return
         self.terminal.add(node_id)
@@ -282,6 +464,14 @@ class GraphExecutor:
             pending.extend(self.downstream[blocked_id])
 
     def _raise_if_cancelled(self) -> None:
+        """Raise the public cancellation error after all state is marked.
+
+        Returns:
+            None.
+
+        Raises:
+            GraphExecutionCancelled: If cancellation was requested.
+        """
         if not self.cancel_event.is_set():
             return
         for node_id in self.graph.nodes:
@@ -291,6 +481,14 @@ class GraphExecutor:
         raise GraphExecutionCancelled("Graph execution cancelled")
 
     def _raise_if_unresolved_or_failed(self) -> None:
+        """Raise a final error for cycles, blocked work, or node failures.
+
+        Returns:
+            None.
+
+        Raises:
+            GraphExecutionError: If any node failed or unresolved nodes remain.
+        """
         unresolved = set(self.graph.nodes) - self.terminal
         if unresolved:
             self.failures.append("The graph contains a cycle and cannot be executed")

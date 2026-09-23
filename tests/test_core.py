@@ -6,7 +6,7 @@ import os
 import shlex
 import sys
 import tempfile
-from threading import Barrier, Event, Timer
+from threading import Barrier, Event, Thread, Timer
 from time import monotonic, sleep
 import unittest
 
@@ -402,6 +402,66 @@ class CoreTests(unittest.TestCase):
         self.assertEqual(result.outputs[node.id]["stdout"].strip(), "command-ok")
         self.assertEqual(result.outputs[node.id]["return_code"], 0)
         self.assertEqual(states, [(node.id, "running"), (node.id, "finished")])
+
+    def test_command_node_streams_stdout_before_process_finishes(self):
+        graph = Graph()
+        command = shlex.join([
+            sys.executable,
+            "-c",
+            "import time; print('live-ready', flush=True); time.sleep(0.4)",
+        ])
+        node = create_node(
+            "system.command",
+            values={"command": command, "shell": False},
+            name="Live Command",
+        )
+        graph.add_node(node)
+        live_output_seen = Event()
+        execution_done = Event()
+        errors = []
+
+        def collect(message):
+            if "Live Command stdout: live-ready" in message:
+                live_output_seen.set()
+
+        def run_graph():
+            try:
+                execute_graph(graph, on_event=collect)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                execution_done.set()
+
+        thread = Thread(target=run_graph)
+        thread.start()
+        self.assertTrue(live_output_seen.wait(timeout=1))
+        self.assertFalse(execution_done.is_set())
+        thread.join(timeout=2)
+        self.assertFalse(errors)
+        self.assertTrue(execution_done.is_set())
+
+    def test_command_node_streams_python_logging_from_stderr(self):
+        graph = Graph()
+        command = shlex.join([
+            sys.executable,
+            "-c",
+            "import logging; logging.warning('logger-visible')",
+        ])
+        node = create_node(
+            "system.command",
+            values={"command": command, "shell": False},
+            name="Logging Command",
+        )
+        graph.add_node(node)
+        messages = []
+
+        result = execute_graph(graph, on_event=messages.append)
+
+        self.assertIn("logger-visible", result.outputs[node.id]["stderr"])
+        self.assertTrue(
+            any("Logging Command stderr:" in message for message in messages)
+        )
+        self.assertTrue(any("logger-visible" in message for message in messages))
 
     def test_failure_blocks_only_downstream_branch(self):
         executed = []

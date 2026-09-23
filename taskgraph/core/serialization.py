@@ -1,3 +1,5 @@
+"""Read and write ``.taskgraph`` files."""
+
 import json
 from pathlib import Path
 
@@ -6,10 +8,31 @@ from taskgraph.core.registry import create_node
 
 
 def save_graph(graph: Graph, path: str | Path) -> None:
+    """Write a graph to disk as formatted JSON.
+
+    Args:
+        graph: Graph model to serialize.
+        path: Destination ``.taskgraph`` or JSON file path.
+
+    Returns:
+        None.
+    """
     Path(path).write_text(json.dumps(graph.to_dict(), indent=2), encoding="utf-8")
 
 
 def load_graph(path: str | Path) -> Graph:
+    """Load a graph from disk and recreate node/backdrop/connection objects.
+
+    Args:
+        path: Source ``.taskgraph`` or JSON file path.
+
+    Returns:
+        Graph: Recreated graph model.
+
+    Raises:
+        ValueError: If the saved graph version is not supported.
+        json.JSONDecodeError: If the file is not valid JSON.
+    """
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if data.get("version") != 1:
         raise ValueError(f"Unsupported graph version: {data.get('version')}")

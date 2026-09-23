@@ -1,3 +1,5 @@
+"""Node type registry and custom-node module loading."""
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -15,6 +17,17 @@ _LOADED_CUSTOM_MODULES: set[Path] = set()
 
 
 def register_node(node_class: T) -> T:
+    """Register a ``ProcessNode`` subclass by its unique ``type_id``.
+
+    Args:
+        node_class: Node class to add to the global registry.
+
+    Returns:
+        T: The same class, allowing use as a decorator.
+
+    Raises:
+        ValueError: If the class does not define a unique type id.
+    """
     if not node_class.type_id or node_class.type_id == ProcessNode.type_id:
         raise ValueError(f"{node_class.__name__} must define a unique type_id")
     if node_class.type_id in _NODE_TYPES:
@@ -24,6 +37,17 @@ def register_node(node_class: T) -> T:
 
 
 def node_class(type_id: str) -> type[ProcessNode]:
+    """Return the registered node class for a type id.
+
+    Args:
+        type_id: Registered node type id.
+
+    Returns:
+        type[ProcessNode]: Node class registered for the type id.
+
+    Raises:
+        ValueError: If no node class has been registered for ``type_id``.
+    """
     try:
         return _NODE_TYPES[type_id]
     except KeyError as exc:
@@ -37,12 +61,29 @@ def create_node(
     disabled: bool = False,
     name: str | None = None,
 ) -> ProcessNode:
+    """Instantiate a registered node type.
+
+    Args:
+        type_id: Registered node type id.
+        node_id: Optional stable id used when loading saved graphs.
+        values: Optional property values keyed by property name.
+        disabled: Whether the node starts disabled.
+        name: Optional user-facing node name.
+
+    Returns:
+        ProcessNode: New node instance.
+    """
     return node_class(type_id)(
         node_id=node_id, values=values, disabled=disabled, name=name
     )
 
 
 def nodes_by_category() -> dict[str, list[type[ProcessNode]]]:
+    """Return registered node classes grouped and sorted by category.
+
+    Returns:
+        dict[str, list[type[ProcessNode]]]: Registered node classes keyed by category.
+    """
     result: dict[str, list[type[ProcessNode]]] = defaultdict(list)
     for cls in _NODE_TYPES.values():
         result[cls.category].append(cls)
@@ -53,7 +94,19 @@ def nodes_by_category() -> dict[str, list[type[ProcessNode]]]:
 
 
 def load_custom_node_directory(directory: str | Path) -> list[Path]:
-    """Import standalone custom-node modules from an arbitrary directory."""
+    """Import standalone custom-node modules from an arbitrary directory.
+
+    Args:
+        directory: Folder containing custom ``.py`` node modules.
+
+    Returns:
+        list[Path]: Module paths imported during this call.
+
+    Raises:
+        ValueError: If ``directory`` does not exist.
+        ImportError: If a module cannot be loaded.
+        Exception: Re-raises exceptions from imported custom node modules.
+    """
     location = Path(directory).expanduser().resolve()
     if not location.is_dir():
         raise ValueError(f"Custom node location does not exist: {location}")

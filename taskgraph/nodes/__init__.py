@@ -9,6 +9,11 @@ from pkgutil import iter_modules
 
 
 def load_builtin_nodes() -> None:
+    """Import every public built-in node module.
+
+    Returns:
+        None.
+    """
     for module in iter_modules(__path__, f"{__name__}."):
         if not module.name.rsplit(".", 1)[-1].startswith("_"):
             import_module(module.name)

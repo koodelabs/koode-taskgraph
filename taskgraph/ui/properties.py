@@ -1,3 +1,5 @@
+"""Right-side Properties panel for nodes and backdrops."""
+
 from __future__ import annotations
 
 from qtpy.QtCore import Signal
@@ -12,9 +14,23 @@ from taskgraph.ui.code_editor import CodeEditor
 
 
 class PropertyEditor(QScrollArea):
+    """Render editable controls for the current node or backdrop selection.
+
+    Attributes:
+        property_changed: Signal emitted after a property edit updates the model.
+    """
+
     property_changed = Signal()
 
     def __init__(self, parent=None):
+        """Create an empty property panel.
+
+        Args:
+            parent: Optional Qt parent widget.
+
+        Returns:
+            None.
+        """
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setMinimumWidth(250)
@@ -27,12 +43,25 @@ class PropertyEditor(QScrollArea):
         self.set_node(None)
 
     def _clear(self) -> None:
+        """Remove all editor rows from the current panel body.
+
+        Returns:
+            None.
+        """
         while self._layout.count():
             item = self._layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
     def set_node(self, node) -> None:
+        """Display editors for a node, backdrop, or empty selection.
+
+        Args:
+            node: Selected ``ProcessNode``, selected ``Backdrop``, or ``None``.
+
+        Returns:
+            None.
+        """
         self._node = node
         self._clear()
         if node is None:
@@ -65,6 +94,14 @@ class PropertyEditor(QScrollArea):
                 self._layout.addRow(spec.label, widget)
 
     def _set_backdrop(self, backdrop: Backdrop) -> None:
+        """Build fixed editors for a selected backdrop.
+
+        Args:
+            backdrop: Selected backdrop model.
+
+        Returns:
+            None.
+        """
         self._layout.addRow(QLabel("<b>Backdrop</b><br><small>Graph notes</small>"))
         title = QLineEdit(backdrop.title)
         title.editingFinished.connect(
@@ -114,21 +151,55 @@ class PropertyEditor(QScrollArea):
         self._layout.addRow("Height", height)
 
     def _set(self, name, value) -> None:
+        """Write a node property value and notify the graph view.
+
+        Args:
+            name: Property key to update.
+            value: New property value.
+
+        Returns:
+            None.
+        """
         if self._node:
             self._node.values[name] = value
             self.property_changed.emit()
 
     def _set_name(self, value: str) -> None:
+        """Update the display name for the selected node.
+
+        Args:
+            value: Raw node name text from the editor.
+
+        Returns:
+            None.
+        """
         if self._node:
             self._node.name = value.strip() or None
             self.property_changed.emit()
 
     def _set_backdrop_value(self, name: str, value) -> None:
+        """Write a simple attribute on the selected backdrop.
+
+        Args:
+            name: Backdrop attribute name to update.
+            value: New attribute value.
+
+        Returns:
+            None.
+        """
         if isinstance(self._node, Backdrop):
             setattr(self._node, name, value)
             self.property_changed.emit()
 
     def _set_backdrop_color(self, value: str) -> None:
+        """Update backdrop color when the entered color string is valid.
+
+        Args:
+            value: Candidate CSS-style color string.
+
+        Returns:
+            None.
+        """
         if isinstance(self._node, Backdrop) and QColor(value).isValid():
             self._node.color = value
             self.property_changed.emit()
@@ -136,6 +207,15 @@ class PropertyEditor(QScrollArea):
     def _set_backdrop_size(
         self, width: int | None = None, height: int | None = None
     ) -> None:
+        """Update backdrop dimensions from width/height spin boxes.
+
+        Args:
+            width: Optional new backdrop width.
+            height: Optional new backdrop height.
+
+        Returns:
+            None.
+        """
         if isinstance(self._node, Backdrop):
             current_width, current_height = self._node.size
             self._node.size = (

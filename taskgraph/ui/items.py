@@ -1,3 +1,5 @@
+"""QGraphicsItems used to draw nodes, ports, connections, and backdrops."""
+
 from __future__ import annotations
 
 import math
@@ -22,12 +24,32 @@ TYPE_COLORS = {
 
 
 class PortItem(QGraphicsObject):
+    """Interactive scene item for one node port.
+
+    Attributes:
+        node_item: Node graphics item that owns this port.
+        spec: Port definition represented by the item.
+        is_output: Whether this item represents an output port.
+        connection_kind: Connection kind accepted by the port.
+    """
+
     RADIUS = 6.0
 
     def __init__(
         self, node_item: "NodeItem", spec: "PortSpec", is_output: bool,
         connection_kind: str = "attribute",
     ):
+        """Create a port item attached to a node item.
+
+        Args:
+            node_item: Node item that owns the port.
+            spec: Port specification represented by this item.
+            is_output: True for output ports, false for input ports.
+            connection_kind: Connection kind handled by the port.
+
+        Returns:
+            None.
+        """
         super().__init__(node_item)
         self.node_item = node_item
         self.spec = spec
@@ -37,10 +59,25 @@ class PortItem(QGraphicsObject):
         self.setCursor(Qt.CrossCursor)
 
     def boundingRect(self) -> QRectF:
+        """Return the local paint/interaction bounds for the port.
+
+        Returns:
+            QRectF: Local bounding rectangle.
+        """
         r = self.RADIUS + 3
         return QRectF(-r, -r, r * 2, r * 2)
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the colored circular port.
+
+        Args:
+            painter: Qt painter used for drawing.
+            option: Style option describing item state.
+            widget: Optional widget being painted.
+
+        Returns:
+            None.
+        """
         color = QColor(TYPE_COLORS.get(self.spec.data_type, TYPE_COLORS["any"]))
         if option.state & QStyle.State_MouseOver:
             color = color.lighter(145)
@@ -49,6 +86,14 @@ class PortItem(QGraphicsObject):
         painter.drawEllipse(QPointF(0, 0), self.RADIUS, self.RADIUS)
 
     def mousePressEvent(self, event) -> None:
+        """Start dragging a connection from this port.
+
+        Args:
+            event: Qt mouse press event.
+
+        Returns:
+            None.
+        """
         if event.button() == Qt.LeftButton:
             self.node_item.graph_scene.begin_connection(self)
             event.accept()
@@ -56,18 +101,48 @@ class PortItem(QGraphicsObject):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        """Update the temporary connection while the mouse is dragged.
+
+        Args:
+            event: Qt mouse move event.
+
+        Returns:
+            None.
+        """
         self.node_item.graph_scene.update_connection(event.scenePos())
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
+        """Finish the dragged connection over a compatible target port.
+
+        Args:
+            event: Qt mouse release event.
+
+        Returns:
+            None.
+        """
         self.node_item.graph_scene.finish_connection(event.scenePos())
         event.accept()
 
 
 class BackdropResizeHandle(QGraphicsObject):
+    """Small drag handle used to resize a backdrop interactively.
+
+    Attributes:
+        backdrop_item: Backdrop item resized by this handle.
+    """
+
     SIZE = 18.0
 
     def __init__(self, backdrop_item: "BackdropItem"):
+        """Create a resize handle owned by a backdrop item.
+
+        Args:
+            backdrop_item: Backdrop item resized by this handle.
+
+        Returns:
+            None.
+        """
         super().__init__(backdrop_item)
         self.backdrop_item = backdrop_item
         self._start_position = QPointF()
@@ -76,15 +151,38 @@ class BackdropResizeHandle(QGraphicsObject):
         self.setZValue(1)
 
     def boundingRect(self) -> QRectF:
+        """Return the local bounds of the resize handle.
+
+        Returns:
+            QRectF: Local bounding rectangle.
+        """
         return QRectF(-self.SIZE, -self.SIZE, self.SIZE, self.SIZE)
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the diagonal resize grip.
+
+        Args:
+            painter: Qt painter used for drawing.
+            option: Style option describing item state.
+            widget: Optional widget being painted.
+
+        Returns:
+            None.
+        """
         color = QColor(self.backdrop_item.backdrop.color).lighter(150)
         painter.setPen(QPen(color, 2, Qt.SolidLine, Qt.RoundCap))
         painter.drawLine(QPointF(-12, -3), QPointF(-3, -12))
         painter.drawLine(QPointF(-8, -3), QPointF(-3, -8))
 
     def mousePressEvent(self, event) -> None:
+        """Start interactive backdrop resizing.
+
+        Args:
+            event: Qt mouse press event.
+
+        Returns:
+            None.
+        """
         if event.button() == Qt.LeftButton:
             self.backdrop_item.setSelected(True)
             self._start_position = event.scenePos()
@@ -94,6 +192,14 @@ class BackdropResizeHandle(QGraphicsObject):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        """Resize the backdrop based on mouse movement.
+
+        Args:
+            event: Qt mouse move event.
+
+        Returns:
+            None.
+        """
         delta = event.scenePos() - self._start_position
         self.backdrop_item.set_interactive_size(
             self._start_size[0] + delta.x(),
@@ -102,6 +208,14 @@ class BackdropResizeHandle(QGraphicsObject):
         event.accept()
 
     def mouseReleaseEvent(self, event) -> None:
+        """End resizing and refresh the Properties panel selection.
+
+        Args:
+            event: Qt mouse release event.
+
+        Returns:
+            None.
+        """
         if event.button() == Qt.LeftButton:
             self.backdrop_item.graph_scene.node_selected.emit(
                 self.backdrop_item.backdrop
@@ -112,9 +226,26 @@ class BackdropResizeHandle(QGraphicsObject):
 
 
 class BackdropItem(QGraphicsObject):
+    """Movable graphics item for a graph backdrop/note region.
+
+    Attributes:
+        graph_scene: Scene that owns the item.
+        backdrop: Backdrop model represented by the item.
+        resize_handle: Child handle used for interactive resizing.
+    """
+
     HEADER = 34.0
 
     def __init__(self, graph_scene: "GraphScene", backdrop: "Backdrop"):
+        """Create a backdrop item for a backdrop model object.
+
+        Args:
+            graph_scene: Scene that owns the graphics item.
+            backdrop: Backdrop model represented by the item.
+
+        Returns:
+            None.
+        """
         super().__init__()
         self.graph_scene = graph_scene
         self.backdrop = backdrop
@@ -129,10 +260,25 @@ class BackdropItem(QGraphicsObject):
         self.resize_handle.setPos(*self._size)
 
     def boundingRect(self) -> QRectF:
+        """Return the current backdrop bounds.
+
+        Returns:
+            QRectF: Backdrop rectangle in local coordinates.
+        """
         width, height = self._size
         return QRectF(0, 0, width, height)
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the backdrop fill, header, title, and note text.
+
+        Args:
+            painter: Qt painter used for drawing.
+            option: Style option describing item state.
+            widget: Optional widget being painted.
+
+        Returns:
+            None.
+        """
         rect = self.boundingRect()
         color = QColor(self.backdrop.color)
         fill = QColor(color)
@@ -164,6 +310,15 @@ class BackdropItem(QGraphicsObject):
         )
 
     def itemChange(self, change, value):
+        """Persist backdrop position changes into the graph model.
+
+        Args:
+            change: Qt item change enum.
+            value: New value associated with the change.
+
+        Returns:
+            object: Value returned by the base implementation.
+        """
         if change == QGraphicsItem.ItemPositionHasChanged and self.scene():
             position = self.pos()
             self.backdrop.position = (position.x(), position.y())
@@ -171,6 +326,11 @@ class BackdropItem(QGraphicsObject):
         return super().itemChange(change, value)
 
     def refresh_geometry(self) -> None:
+        """Apply model size changes to the graphics item.
+
+        Returns:
+            None.
+        """
         if self._size != self.backdrop.size:
             self.prepareGeometryChange()
             self._size = self.backdrop.size
@@ -178,6 +338,15 @@ class BackdropItem(QGraphicsObject):
         self.update()
 
     def set_interactive_size(self, width: float, height: float) -> None:
+        """Resize the backdrop from the drag handle with minimum limits.
+
+        Args:
+            width: Requested backdrop width.
+            height: Requested backdrop height.
+
+        Returns:
+            None.
+        """
         new_size = (max(200.0, width), max(120.0, height))
         if new_size == self._size:
             return
@@ -190,11 +359,29 @@ class BackdropItem(QGraphicsObject):
 
 
 class NodeItem(QGraphicsObject):
+    """Graphics item that displays one process node and its ports.
+
+    Attributes:
+        graph_scene: Scene that owns the item.
+        node: Process node model represented by the item.
+        input_ports: Attribute input port items keyed by port name.
+        output_ports: Attribute output port items keyed by port name.
+    """
+
     WIDTH = 250.0
     HEADER = 30.0
     ROW = 25.0
 
     def __init__(self, graph_scene: "GraphScene", node: "ProcessNode"):
+        """Create a node graphics item from a process node instance.
+
+        Args:
+            graph_scene: Scene that owns the node item.
+            node: Process node model represented by the item.
+
+        Returns:
+            None.
+        """
         super().__init__()
         self.graph_scene = graph_scene
         self.node = node
@@ -227,14 +414,34 @@ class NodeItem(QGraphicsObject):
             self.output_ports[spec.name] = port
 
     def boundingRect(self) -> QRectF:
+        """Return the paint bounds for the node item.
+
+        Returns:
+            QRectF: Local bounding rectangle.
+        """
         return QRectF(-8, -2, self.WIDTH + 16, self._height + 10)
 
     def shape(self) -> QPainterPath:
+        """Return the selectable/clickable rounded node shape.
+
+        Returns:
+            QPainterPath: Clickable shape for selection and hit testing.
+        """
         path = QPainterPath()
         path.addRoundedRect(QRectF(0, 0, self.WIDTH, self._height), 6, 6)
         return path
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the node body, ports, labels, and execution state.
+
+        Args:
+            painter: Qt painter used for drawing.
+            option: Style option describing item state.
+            widget: Optional widget being painted.
+
+        Returns:
+            None.
+        """
         body = QRectF(0, 0, self.WIDTH, self._height)
         state = self.graph_scene.execution_states.get(self.node.id, "idle")
         state_colors = {
@@ -319,13 +526,42 @@ class NodeItem(QGraphicsObject):
             painter.drawText(body, Qt.AlignCenter, "DISABLED")
 
     def itemChange(self, change, value):
+        """Persist node position changes into the graph model.
+
+        Args:
+            change: Qt item change enum.
+            value: New value associated with the change.
+
+        Returns:
+            object: Value returned by the base implementation.
+        """
         if change == QGraphicsItem.ItemPositionHasChanged and self.scene():
             self.graph_scene.node_moved(self)
         return super().itemChange(change, value)
 
 
 class ConnectionItem(QGraphicsItem):
+    """Graphics item that draws a directed connection between two ports.
+
+    Attributes:
+        graph_scene: Scene that owns the item.
+        connection: Optional saved connection model.
+        start: Source endpoint in scene coordinates.
+        end: Target endpoint in scene coordinates.
+        path: Bezier path drawn for the connection.
+    """
+
     def __init__(self, graph_scene: "GraphScene", connection: "Connection" | None = None):
+        """Create a saved or temporary connection item.
+
+        Args:
+            graph_scene: Scene that owns the connection item.
+            connection: Optional saved connection model. Omitted for temporary
+                drag-preview connections.
+
+        Returns:
+            None.
+        """
         super().__init__()
         self.graph_scene = graph_scene
         self.connection = connection
@@ -337,20 +573,44 @@ class ConnectionItem(QGraphicsItem):
         self.refresh()
 
     def boundingRect(self) -> QRectF:
+        """Return bounds for the curved connection plus selection padding.
+
+        Returns:
+            QRectF: Local bounding rectangle.
+        """
         return self.path.boundingRect().adjusted(-18, -18, 18, 18)
 
     def shape(self) -> QPainterPath:
+        """Return a widened shape for easier connection selection.
+
+        Returns:
+            QPainterPath: Stroked selection shape around the curve.
+        """
         from qtpy.QtGui import QPainterPathStroker
         stroker = QPainterPathStroker()
         stroker.setWidth(12)
         return stroker.createStroke(self.path)
 
     def set_points(self, start: QPointF, end: QPointF) -> None:
+        """Set scene endpoints for the connection curve.
+
+        Args:
+            start: Source endpoint in scene coordinates.
+            end: Target endpoint in scene coordinates.
+
+        Returns:
+            None.
+        """
         self.prepareGeometryChange()
         self.start, self.end = start, end
         self._update_path()
 
     def refresh(self) -> None:
+        """Recalculate endpoints from the current source and target ports.
+
+        Returns:
+            None.
+        """
         if self.connection and self.connection.source_node in self.graph_scene.node_items:
             source = self.graph_scene.node_items[self.connection.source_node]
             target = self.graph_scene.node_items[self.connection.target_node]
@@ -366,6 +626,11 @@ class ConnectionItem(QGraphicsItem):
             )
 
     def _update_path(self) -> None:
+        """Rebuild the cubic Bezier path from start/end points.
+
+        Returns:
+            None.
+        """
         self.path = QPainterPath(self.start)
         distance = max(70.0, abs(self.end.x() - self.start.x()) * 0.55)
         direction = 1 if self.end.x() >= self.start.x() else -1
@@ -377,6 +642,16 @@ class ConnectionItem(QGraphicsItem):
         self.update()
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
+        """Draw the connection curve, arrow, and multi-input index marker.
+
+        Args:
+            painter: Qt painter used for drawing.
+            option: Style option describing item state.
+            widget: Optional widget being painted.
+
+        Returns:
+            None.
+        """
         if self.connection and self.connection.kind == "dependency":
             color = QColor("#ffd166" if self.isSelected() else "#d4922f")
         else:
@@ -387,6 +662,15 @@ class ConnectionItem(QGraphicsItem):
         self._draw_multi_input_index(painter, color)
 
     def _draw_arrow(self, painter: QPainter, color: QColor) -> None:
+        """Draw a direction arrow on the connection curve.
+
+        Args:
+            painter: Qt painter used for drawing.
+            color: Arrow fill color.
+
+        Returns:
+            None.
+        """
         # Place the arrow inside the curve rather than at the port, where it
         # remains readable even when several connections share a node.
         before = self.path.pointAtPercent(0.54)
@@ -407,6 +691,15 @@ class ConnectionItem(QGraphicsItem):
         painter.drawPolygon(arrow)
 
     def _draw_multi_input_index(self, painter: QPainter, color: QColor) -> None:
+        """Draw connection order number for multi-input attribute ports.
+
+        Args:
+            painter: Qt painter used for drawing.
+            color: Border color for the index badge.
+
+        Returns:
+            None.
+        """
         index = self.multi_input_index()
         if index is None:
             return
@@ -425,6 +718,11 @@ class ConnectionItem(QGraphicsItem):
         painter.drawText(rect, Qt.AlignCenter, str(index))
 
     def multi_input_index(self) -> int | None:
+        """Return this connection's index for a multi-input target port.
+
+        Returns:
+            int | None: Zero-based connection index, or None when not applicable.
+        """
         if not self.connection or self.connection.kind != "attribute":
             return None
         target = self.graph_scene.graph.nodes.get(self.connection.target_node)

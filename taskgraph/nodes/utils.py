@@ -1,9 +1,18 @@
+"""Built-in utility nodes."""
+
 from taskgraph.core.model import BoolProperty, PortSpec, ProcessNode, TextProperty
 from taskgraph.core.registry import register_node
 
 
 @register_node
 class FormatText(ProcessNode):
+    """Format one or more incoming values into a text string.
+
+    Attributes:
+        template: Python format string applied to incoming values.
+        uppercase: Whether to convert the formatted text to uppercase.
+    """
+
     type_id = "text.format"
     title = "Format Text"
     category = "Utils"
@@ -16,6 +25,20 @@ class FormatText(ProcessNode):
     )
 
     def process(self, inputs):
+        """Apply the configured format string to incoming values.
+
+        Args:
+            inputs: Values received from upstream attribute connections. The
+                ``"value"`` key may contain one value or a list of values.
+
+        Returns:
+            dict[str, str]: Formatted text keyed by ``"text"``.
+
+        Raises:
+            KeyError: If the required ``"value"`` input is missing.
+            IndexError: If the template references an unavailable positional value.
+            KeyError: If the template references an unavailable named value.
+        """
         values = inputs["value"]
         if not isinstance(values, list):
             values = [values]

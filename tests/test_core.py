@@ -48,6 +48,26 @@ class CoreTests(unittest.TestCase):
             PortSpec("dependency", "dependency", multiple=True),
         )
 
+    def test_nodes_expose_user_defined_custom_properties(self):
+        node = create_node(
+            "input.number",
+            custom_properties={
+                "department": "lighting",
+                "priority": 10,
+            },
+        )
+
+        self.assertEqual(node.custom_properties.department, "lighting")
+        self.assertEqual(node.custom_properties["priority"], 10)
+
+        node.custom_properties.department = "animation"
+        node.custom_properties["priority"] = 20
+
+        self.assertEqual(
+            node.custom_properties.to_dict(),
+            {"department": "animation", "priority": 20},
+        )
+
     def test_custom_nodes_load_from_external_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             node_directory = Path(directory)
@@ -193,6 +213,9 @@ class CoreTests(unittest.TestCase):
 
     def test_round_trip(self):
         graph = sample_graph()
+        next(iter(graph.nodes.values())).custom_properties.add(
+            "owner", "pipeline"
+        )
         graph.add_backdrop(Backdrop(
             title="Input stage",
             note="These nodes prepare the source data.",

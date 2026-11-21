@@ -332,6 +332,41 @@ class PropertyEditorTests(unittest.TestCase):
             "def process(inputs):    return {'result': 1}",
         )
 
+    def test_custom_properties_can_be_added_edited_and_removed(self):
+        node = ProcessNode()
+        editor = PropertyEditor()
+        editor.set_node(node)
+
+        editor.findChild(QPushButton, "addCustomPropertyButton").click()
+        self.assertEqual(node.custom_properties.to_dict(), {"property": ""})
+
+        key_editor = editor.findChild(QLineEdit, "customPropertyKey")
+        key_editor.setText("department")
+        key_editor.editingFinished.emit()
+
+        value_editor = editor.findChild(QLineEdit, "customPropertyValue")
+        value_editor.setText("lighting")
+        value_editor.editingFinished.emit()
+
+        self.assertEqual(node.custom_properties.department, "lighting")
+
+        editor.findChild(QPushButton, "removeCustomPropertyButton").click()
+        self.assertEqual(node.custom_properties.to_dict(), {})
+
+    def test_custom_property_key_must_support_attribute_access(self):
+        node = ProcessNode(custom_properties={"valid_key": "value"})
+        editor = PropertyEditor()
+        editor.set_node(node)
+
+        key_editor = editor.findChild(QLineEdit, "customPropertyKey")
+        key_editor.setText("not a python key")
+        key_editor.editingFinished.emit()
+
+        self.assertEqual(
+            node.custom_properties.to_dict(),
+            {"valid_key": "value"},
+        )
+
 
 class ConnectionItemTests(unittest.TestCase):
     @classmethod

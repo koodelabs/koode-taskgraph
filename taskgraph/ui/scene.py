@@ -325,6 +325,7 @@ class GraphScene(QGraphicsScene):
                     item["type"], values=item.get("values"),
                     disabled=item.get("disabled", False),
                     name=item.get("name"),
+                    custom_properties=item.get("custom_properties"),
                 )
                 id_map[item["id"]] = node.id
                 created_ids.append(node.id)

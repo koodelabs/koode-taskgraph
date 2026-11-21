@@ -60,6 +60,7 @@ def create_node(
     values: dict | None = None,
     disabled: bool = False,
     name: str | None = None,
+    custom_properties: dict | None = None,
 ) -> ProcessNode:
     """Instantiate a registered node type.
 
@@ -69,12 +70,17 @@ def create_node(
         values: Optional property values keyed by property name.
         disabled: Whether the node starts disabled.
         name: Optional user-facing node name.
+        custom_properties: Optional user-defined key/value mapping.
 
     Returns:
         ProcessNode: New node instance.
     """
     return node_class(type_id)(
-        node_id=node_id, values=values, disabled=disabled, name=name
+        node_id=node_id,
+        values=values,
+        disabled=disabled,
+        name=name,
+        custom_properties=custom_properties,
     )
 
 

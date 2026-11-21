@@ -42,6 +42,7 @@ def load_graph(path: str | Path) -> Graph:
             item["type"], item["id"], item.get("values"),
             disabled=item.get("disabled", False),
             name=item.get("name"),
+            custom_properties=item.get("custom_properties"),
         )
         graph.add_node(node, tuple(item.get("position", (0, 0))))
     for item in data.get("connections", []):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import keyword
 from typing import Any, ClassVar
 from uuid import uuid4
 
@@ -12,6 +13,184 @@ class NodeCancelled(RuntimeError):
 
     The executor treats this as a cooperative cancellation, not a node failure.
     """
+
+
+class CustomProperties:
+    """Store user-defined node values with mapping and attribute access.
+
+    Attributes:
+        Values can be read using either ``properties["key"]`` or
+        ``properties.key``. Keys intended for attribute access must be valid
+        Python identifiers.
+    """
+
+    _RESERVED_KEYS = frozenset({
+        "add", "items", "remove", "rename", "to_dict",
+    })
+
+    def __init__(self, values: dict[str, Any] | None = None) -> None:
+        """Create a custom-property container.
+
+        Args:
+            values: Optional initial key/value mapping.
+
+        Returns:
+            None.
+        """
+        object.__setattr__(self, "_values", {})
+        for key, value in (values or {}).items():
+            self.add(key, value)
+
+    def __getattr__(self, key: str) -> Any:
+        """Return a custom value using attribute syntax.
+
+        Args:
+            key: Custom-property key.
+
+        Returns:
+            Any: Stored custom value.
+
+        Raises:
+            AttributeError: If the key does not exist.
+        """
+        try:
+            return self._values[key]
+        except KeyError as exc:
+            raise AttributeError(key) from exc
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        """Set a custom value using attribute syntax.
+
+        Args:
+            key: Custom-property key.
+            value: Value to store.
+
+        Returns:
+            None.
+        """
+        self[key] = value
+
+    def __getitem__(self, key: str) -> Any:
+        """Return a custom value using mapping syntax.
+
+        Args:
+            key: Custom-property key.
+
+        Returns:
+            Any: Stored custom value.
+        """
+        return self._values[key]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        """Set a custom value using mapping syntax.
+
+        Args:
+            key: Custom-property key.
+            value: Value to store.
+
+        Returns:
+            None.
+        """
+        if not self.is_valid_key(key):
+            raise ValueError(f"Invalid custom property key: {key!r}")
+        self._values[key] = value
+
+    def __contains__(self, key: object) -> bool:
+        """Return whether a key exists.
+
+        Args:
+            key: Candidate custom-property key.
+
+        Returns:
+            bool: True when the key exists.
+        """
+        return key in self._values
+
+    def items(self):
+        """Return the stored key/value pairs.
+
+        Returns:
+            ItemsView: Live view of stored key/value pairs.
+        """
+        return self._values.items()
+
+    def add(self, key: str, value: Any = "") -> None:
+        """Add a new custom property.
+
+        Args:
+            key: New unique property key.
+            value: Initial property value.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If the key is invalid or already exists.
+        """
+        if not self.is_valid_key(key):
+            raise ValueError(f"Invalid custom property key: {key!r}")
+        if key in self._values:
+            raise ValueError(f"Custom property already exists: {key}")
+        self[key] = value
+
+    def rename(self, old_key: str, new_key: str) -> None:
+        """Rename a custom property without changing its value.
+
+        Args:
+            old_key: Existing property key.
+            new_key: New unique property key.
+
+        Returns:
+            None.
+
+        Raises:
+            KeyError: If ``old_key`` does not exist.
+            ValueError: If ``new_key`` is invalid or already exists.
+        """
+        if old_key == new_key:
+            return
+        if not self.is_valid_key(new_key):
+            raise ValueError(f"Invalid custom property key: {new_key!r}")
+        if new_key in self._values:
+            raise ValueError(f"Custom property already exists: {new_key}")
+        value = self._values.pop(old_key)
+        self._values[new_key] = value
+
+    @classmethod
+    def is_valid_key(cls, key: str) -> bool:
+        """Return whether a key supports unambiguous attribute access.
+
+        Args:
+            key: Candidate custom-property key.
+
+        Returns:
+            bool: True for a valid, non-reserved Python identifier.
+        """
+        return (
+            bool(key)
+            and key.isidentifier()
+            and not keyword.iskeyword(key)
+            and key not in cls._RESERVED_KEYS
+        )
+
+    def remove(self, key: str) -> None:
+        """Remove a custom property.
+
+        Args:
+            key: Property key to remove.
+
+        Returns:
+            None.
+        """
+        del self._values[key]
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a serializable copy of the stored values.
+
+        Returns:
+            dict[str, Any]: Copy of the custom-property mapping.
+        """
+        return dict(self._values)
 
 
 @dataclass(frozen=True)
@@ -464,6 +643,7 @@ class ProcessNode:
         disabled: Whether execution should skip this node.
         name: Optional user-facing display name.
         values: Editable property values keyed by property name.
+        custom_properties: User-defined values added through the UI.
     """
 
     type_id: ClassVar[str] = "core.process"
@@ -486,6 +666,7 @@ class ProcessNode:
         values: dict[str, Any] | None = None,
         disabled: bool = False,
         name: str | None = None,
+        custom_properties: dict[str, Any] | None = None,
     ):
         """Create a process node instance with property defaults and state.
 
@@ -494,6 +675,7 @@ class ProcessNode:
             values: Optional property values keyed by property name.
             disabled: Whether this node should be skipped during execution.
             name: Optional user-facing display name.
+            custom_properties: Optional user-defined key/value mapping.
 
         Returns:
             None.
@@ -503,6 +685,7 @@ class ProcessNode:
         self.name = name
         self._cancel_event = None
         self._event_callback = None
+        self.custom_properties = CustomProperties(custom_properties)
         values = values or {}
         self.values = {
             spec.name: values.get(spec.name, spec.default)
@@ -582,6 +765,7 @@ class ProcessNode:
             "values": self.values,
             "disabled": self.disabled,
             "name": self.name,
+            "custom_properties": self.custom_properties.to_dict(),
         }
 
 

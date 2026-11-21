@@ -451,6 +451,7 @@ class TaskGraphGraphApi:
         name: str | None = None,
         position: tuple[float, float] = (0, 0),
         disabled: bool = False,
+        custom_properties: dict | None = None,
     ) -> ProcessNode:
         """Create and draw a node in the current graph.
 
@@ -460,6 +461,7 @@ class TaskGraphGraphApi:
             name: Optional user-facing node name.
             position: Scene position as ``(x, y)``.
             disabled: Whether the node should start disabled.
+            custom_properties: Optional user-defined key/value mapping.
 
         Returns:
             ProcessNode: Created node model.
@@ -469,6 +471,7 @@ class TaskGraphGraphApi:
             values=values,
             disabled=disabled,
             name=name,
+            custom_properties=custom_properties,
         )
         self.root.scene.add_process_node(node, QPointF(position[0], position[1]))
         return node

@@ -5,8 +5,8 @@ import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from qtpy.QtCore import QSettings, Qt
-from qtpy.QtGui import QKeyEvent, QTextCursor
+from qtpy.QtCore import QRectF, QSettings, Qt
+from qtpy.QtGui import QImage, QKeyEvent, QPainter, QTextCursor
 from qtpy.QtWidgets import (
     QApplication, QFileDialog, QLineEdit, QPushButton, QSizePolicy, QWidget,
 )
@@ -27,7 +27,7 @@ from taskgraph.ui.properties import (
     PropertyEditor,
 )
 from taskgraph.ui.plugins import load_gui_plugin_directory
-from taskgraph.ui.scene import GraphScene
+from taskgraph.ui.scene import GraphScene, GraphView
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -397,6 +397,28 @@ class ConnectionItemTests(unittest.TestCase):
             [item.multi_input_index() for item in attribute_items],
             [0, 1],
         )
+
+
+class GraphViewPaintingTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_background_can_be_repainted_repeatedly(self):
+        view = GraphView(GraphScene())
+        image = QImage(800, 600, QImage.Format_ARGB32)
+        painter = QPainter(image)
+
+        try:
+            for _ in range(100):
+                view.drawBackground(
+                    painter,
+                    QRectF(-400.0, -300.0, 800.0, 600.0),
+                )
+        finally:
+            painter.end()
+
+        self.assertFalse(image.isNull())
 
 
 class NodePaletteTests(unittest.TestCase):

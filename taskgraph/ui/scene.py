@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict, deque
+from math import floor
 
-from qtpy.QtCore import QPointF, QRectF, Qt, Signal
+from qtpy.QtCore import QLineF, QPointF, QRectF, Qt, Signal
 from qtpy.QtGui import QColor, QPainter, QPen
 from qtpy.QtWidgets import QApplication, QGraphicsScene, QGraphicsView
 
@@ -503,6 +504,11 @@ class GraphView(QGraphicsView):
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self.setAcceptDrops(True)
         self.setBackgroundBrush(QColor("#1a1f24"))
+        # Keep these Qt value objects alive for the lifetime of the view.
+        # Creating temporary QPen/QColor wrappers during every paint caused
+        # Shiboken refcount crashes on some Linux/PySide6 combinations.
+        self._minor_grid_pen = QPen(QColor("#242b31"), 1)
+        self._major_grid_pen = QPen(QColor("#2c353d"), 1)
         self._panning = False
         self._pan_start = None
 
@@ -516,27 +522,49 @@ class GraphView(QGraphicsView):
         Returns:
             None.
         """
-        painter.fillRect(rect, QColor("#1a1f24"))
-        left = int(rect.left()) - int(rect.left()) % 24
-        top = int(rect.top()) - int(rect.top()) % 24
-        painter.setPen(QPen(QColor("#242b31"), 1))
+        super().drawBackground(painter, rect)
+        painter.save()
+        try:
+            self._draw_grid(painter, rect, 24, self._minor_grid_pen)
+            self._draw_grid(painter, rect, 120, self._major_grid_pen)
+        finally:
+            painter.restore()
+
+    @staticmethod
+    def _draw_grid(
+        painter: QPainter,
+        rect: QRectF,
+        spacing: int,
+        pen: QPen,
+    ) -> None:
+        """Draw one grid level with explicit floating-point line objects.
+
+        Args:
+            painter: Active painter supplied by Qt.
+            rect: Visible scene rectangle to cover.
+            spacing: Distance between adjacent grid lines.
+            pen: Pen used for the grid level.
+
+        Returns:
+            None.
+        """
+        painter.setPen(pen)
+        left = floor(rect.left() / spacing) * spacing
+        top = floor(rect.top() / spacing) * spacing
+
         x = left
-        while x < rect.right():
-            painter.drawLine(x, rect.top(), x, rect.bottom())
-            x += 24
+        while x <= rect.right():
+            painter.drawLine(
+                QLineF(float(x), rect.top(), float(x), rect.bottom())
+            )
+            x += spacing
+
         y = top
-        while y < rect.bottom():
-            painter.drawLine(rect.left(), y, rect.right(), y)
-            y += 24
-        painter.setPen(QPen(QColor("#2c353d"), 1))
-        x = left - left % 120
-        while x < rect.right():
-            painter.drawLine(x, rect.top(), x, rect.bottom())
-            x += 120
-        y = top - top % 120
-        while y < rect.bottom():
-            painter.drawLine(rect.left(), y, rect.right(), y)
-            y += 120
+        while y <= rect.bottom():
+            painter.drawLine(
+                QLineF(rect.left(), float(y), rect.right(), float(y))
+            )
+            y += spacing
 
     def wheelEvent(self, event) -> None:
         """Zoom the view around the mouse pointer.
